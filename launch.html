@@ -352,35 +352,13 @@
     }
     .btn-close-modal:hover { color:var(--text-main); border-color:var(--text-muted); }
 
+
     /* ── 合约验证区域 ── */
     .verify-section { margin-top:18px; text-align:left; }
-    .verify-toggle {
-      display:flex; align-items:center; gap:8px; cursor:pointer;
-      font-size:.88rem; font-weight:700; color:var(--accent2);
-      background:rgba(109,40,217,.08); border:1px solid rgba(109,40,217,.25);
-      border-radius:8px; padding:10px 14px; width:100%;
-      transition:background .2s;
-    }
-    .verify-toggle:hover { background:rgba(109,40,217,.15); }
-    .verify-toggle .arrow { transition:transform .2s; display:inline-block; }
-    .verify-toggle.open .arrow { transform:rotate(90deg); }
     .verify-body {
-      max-height:0; overflow:hidden; transition:max-height .3s ease;
-      background:var(--bg-card); border-radius:0 0 10px 10px;
-      border:1px solid var(--border); border-top:none; padding:0 14px;
+      background:var(--bg-card); border-radius:10px;
+      border:1px solid var(--border); padding:14px;
     }
-    .verify-body.open { max-height:1200px; padding:14px; }
-    .verify-tabs { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
-    .verify-tab {
-      padding:6px 14px; border-radius:6px; font-size:.8rem; font-weight:600;
-      cursor:pointer; border:1px solid var(--border); background:transparent;
-      color:var(--text-muted); transition:all .2s;
-    }
-    .verify-tab.active { background:var(--accent2); color:#fff; border-color:var(--accent2); }
-    .verify-tab:hover:not(.active) { border-color:var(--accent2); color:var(--accent2); }
-    .verify-panel { display:none; font-size:.82rem; line-height:1.7; }
-    .verify-panel.active { display:block; }
-    .verify-panel h4 { font-size:.85rem; margin:0 0 8px 0; color:var(--accent1); }
     .verify-code {
       background:#1e1b35; color:#e2e8f0; border-radius:8px;
       padding:12px 14px; font-family:'Cascadia Code','Fira Code',monospace;
@@ -767,87 +745,47 @@
     </div>
     <!-- 合约验证区域 -->
     <div class="verify-section" id="verify-section" style="display:none">
-      <div class="verify-toggle" id="verify-toggle" onclick="toggleVerify()">
-        <span class="arrow">▶</span> 🔍 合约开源验证
-      </div>
-      <div class="verify-body" id="verify-body">
-        <div class="verify-tabs">
-          <button class="verify-tab active" onclick="switchVerifyTab('bscscan',this)">🌐 BSCScan 一键上传</button>
-          <button class="verify-tab" onclick="switchVerifyTab('forge',this)">⚙️ Foundry 命令行</button>
-          <button class="verify-tab" onclick="switchVerifyTab('manual',this)">📖 手动验证指引</button>
+      <div class="verify-body" id="verify-body" class="open" style="max-height:1200px;padding:14px">
+        <h4 style="font-size:.9rem;margin:0 0 10px;color:var(--accent1)">🔍 合约开源验证（via-IR）</h4>
+        <!-- 一键验证按钮 -->
+        <div style="margin-bottom:12px">
+          <button id="btn-one-click-verify" onclick="oneClickVerify()" style="background:linear-gradient(135deg,#7c3aed,#0d9488);color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:.9rem;cursor:pointer;font-weight:600;transition:all .2s">
+            🚀 一键验证（自动下载 JSON + 打开 BSCScan + 复制参数）
+          </button>
         </div>
-        <div class="verify-panel active" id="vpanel-bscscan">
-          <h4>📦 方式一：下载 JSON 文件后上传到 BSCScan</h4>
-          <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:10px">
-            1. 点击"下载验证包"按钮，保存 <code>bsc-verify.json</code><br/>
-            2. 打开 BSCScan 合约验证页面，选择 <b>Solidity (Standard Json Input)</b><br/>
-            3. 上传下载的 JSON 文件，提交即可
-          </p>
-          <div class="verify-btn-row">
-            <button class="verify-btn primary" onclick="downloadVerifyJson()">📥 下载验证包 (JSON)</button>
-            <button class="verify-btn" onclick="copyVerifyParams()">📋 复制构造函数参数</button>
+        <!-- 验证步骤指引 -->
+        <div id="verify-steps-guide" style="font-size:.8rem;line-height:1.8;color:var(--text-muted)">
+          <div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:12px;margin-bottom:10px">
+            <b style="color:var(--accent2)">操作步骤：</b><br/>
+            1. 点击上方按钮 → 自动下载 <code>bsc-verify-xxxxxx.json</code><br/>
+            2. 自动打开 BSCScan 验证页面（构造函数参数已复制到剪贴板）<br/>
+            3. 在 BSCScan 上：<b>Standard Json Input</b> → 编译器 <code>v0.8.20+commit.a1b79de6</code> → 上传 JSON → 填合约名 <code>ModaMintToken</code> → 粘贴构造函数参数 → Verify
           </div>
-          <div id="verify-params-preview" style="margin-top:10px"></div>
         </div>
-        <div class="verify-panel" id="vpanel-forge">
-          <h4>⚙️ 方式二：使用 Foundry 命令行验证</h4>
-          <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">
-            确保已安装 Foundry (<code>curl -L https://foundry.paradigm.xyz | bash</code>)，
-            然后在终端执行以下命令：
-          </p>
-          <div class="verify-code" id="forge-cmd-code">
+        <!-- 构造函数参数 -->
+        <div style="margin-bottom:8px">
+          <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:4px">构造函数参数（Constructor Arguments，已自动复制，也可手动复制）：</div>
+          <div class="verify-code" id="ctor-args-display" style="font-size:.7rem;max-height:80px;overflow-y:auto;word-break:break-all">
+            <button class="copy-btn" onclick="copyCtorArgs()">复制</button>
+            <span id="ctor-args-text">（部署后显示）</span>
+          </div>
+        </div>
+        <!-- 单独操作按钮 -->
+        <div class="verify-btn-row" style="margin-top:10px">
+          <button class="verify-btn" onclick="downloadVerifyJson()">📥 单独下载验证包</button>
+          <button class="verify-btn" onclick="openBscScanVerify()">🌐 打开 BSCScan</button>
+          <button class="verify-btn" onclick="copyCtorArgs()">📋 复制参数</button>
+          <button class="verify-btn" onclick="downloadContractSrc()">📥 下载源码</button>
+        </div>
+        <!-- Foundry 折叠 -->
+        <details style="margin-top:10px;font-size:.78rem;color:var(--text-muted)">
+          <summary style="cursor:pointer;color:var(--accent1)">⚙️ Foundry 命令行验证（可选）</summary>
+          <div class="verify-code" id="forge-cmd-code" style="margin-top:6px">
             <button class="copy-btn" onclick="copyForgeCmd()">复制</button>
             <span id="forge-cmd-text"></span>
           </div>
-          <div class="verify-btn-row">
-            <button class="verify-btn" onclick="copyForgeCmd()">📋 复制命令</button>
-            <button class="verify-btn" onclick="downloadContractSrc()">📥 下载合约源码</button>
-          </div>
-        </div>
-        <div class="verify-panel" id="vpanel-manual">
-          <h4>📖 方式三：BSCScan 网页手动验证步骤</h4>
-          <ol class="verify-steps">
-            <li>点击下方 <b>"打开 BSCScan 验证页面"</b> 按钮</li>
-            <li>验证方式选择：<b>Solidity (Single part)</b></li>
-            <li>编译器版本选择：<code>v0.8.20+commit.a1b79de6</code></li>
-            <li>开源许可证选择：<code>MIT License</code></li>
-            <li>优化设置：<b>Yes</b>，运行次数：<b>200</b></li>
-            <li>勾选 <b>Enabled via IR</b>（⚠️ 必须勾选！）</li>
-            <li>合约名称填写：<code>ModaMintToken</code></li>
-            <li>粘贴合约源码（点击下方"下载合约源码"获取完整源码）</li>
-            <li>构造函数参数（ABI 编码，不含 0x）：</li>
-          </ol>
-          <div class="verify-param-row">
-            <span class="verify-param-label">编译器版本</span>
-            <span class="verify-param-value">v0.8.20+commit.a1b79de6</span>
-          </div>
-          <div class="verify-param-row">
-            <span class="verify-param-label">优化</span>
-            <span class="verify-param-value">Yes, 200 runs</span>
-          </div>
-          <div class="verify-param-row">
-            <span class="verify-param-label">Via-IR</span>
-            <span class="verify-param-value" style="color:var(--danger);font-weight:700">必须启用！</span>
-          </div>
-          <div class="verify-param-row">
-            <span class="verify-param-label">EVM 版本</span>
-            <span class="verify-param-value">Paris（默认）</span>
-          </div>
-          <div class="verify-param-row">
-            <span class="verify-param-label">合约名称</span>
-            <span class="verify-param-value">ModaMintToken</span>
-          </div>
-          <div class="verify-param-row">
-            <span class="verify-param-label">构造函数参数 (ABI-encoded)</span>
-            <span class="verify-param-value" id="manual-ctor-args" style="font-size:.7rem">（部署后显示）</span>
-          </div>
-          <div class="verify-btn-row">
-            <button class="verify-btn primary" onclick="openBscScanVerify()">🌐 打开 BSCScan 验证页面</button>
-            <button class="verify-btn" onclick="copyCtorArgs()">📋 复制构造函数参数</button>
-            <button class="verify-btn" onclick="downloadContractSrc()">📥 下载合约源码</button>
-          </div>
-          <div class="verify-note">⚠️ 源码和合约 bytecode 必须使用同一编译器版本编译，否则验证会失败。本平台使用 solc v0.8.20+commit.a1b79de6 (via-IR, optimize 200) 编译。</div>
-        </div>
+        </details>
+        <div class="verify-note">⚠️ 本合约使用 via-IR 编译，必须用 <b>Standard Json Input</b> 方式验证。Single Part 不支持 via-IR。</div>
       </div>
     </div>
 
@@ -1318,7 +1256,8 @@ async function launchToken(){
     // 提取构造函数参数 = initCode - bytecode（去掉前面的 bytecode 部分就是构造函数参数编码）
     const bytecodeOnly = CONTRACT_BYTECODE; // 以 0x 开头
     const ctorArgsHex = '0x' + initCode.slice(bytecodeOnly.length);
-    console.log('构造函数参数 (验证用):', ctorArgsHex.slice(0,66) + '...');
+    console.log('构造函数参数 (验证用，完整):', ctorArgsHex);
+    console.log('构造函数参数 (不含0x前缀):', ctorArgsHex.slice(2));
 
     console.log('initCode 长度:', initCode.length, 'bytes');
 
@@ -1608,37 +1547,81 @@ function showVerifySection(contractAddr, ctorArgsHex){
   _verifyCtorArgsHex = ctorArgsHex || '';
   const section = document.getElementById('verify-section');
   if(section) section.style.display = 'block';
-  const el = document.getElementById('manual-ctor-args');
-  if(el) el.textContent = _verifyCtorArgsHex ? _verifyCtorArgsHex.replace(/^0x/,'').slice(0,66) + '...' : '\uff08\u65e0\uff09';
+  // 更新构造函数参数显示
+  const argsText = document.getElementById('ctor-args-text');
+  if(argsText) argsText.textContent = _verifyCtorArgsHex ? _verifyCtorArgsHex.replace(/^0x/,'') : '（无）';
+  // 构建 Foundry 命令
   buildForgeCommand();
-  buildVerifyParamsPreview();
 }
 
-function toggleVerify(){
-  const body = document.getElementById('verify-body');
-  const tog = document.getElementById('verify-toggle');
-  if(!body || !tog) return;
-  body.classList.toggle('open');
-  tog.classList.toggle('open');
+/**
+ * 一键验证：自动下载 JSON + 复制参数 + 打开 BSCScan
+ */
+async function oneClickVerify(){
+  const btn = document.getElementById('btn-one-click-verify');
+  if(btn){
+    btn.disabled = true;
+    btn.textContent = '⏳ 正在生成验证包...';
+  }
+  try {
+    // 1. 自动下载验证包 JSON
+    await downloadVerifyJsonSilent();
+    // 2. 自动复制构造函数参数到剪贴板
+    if(_verifyCtorArgsHex){
+      await copyText(_verifyCtorArgsHex.replace(/^0x/,''));
+    }
+    // 3. 稍等一下再打开 BSCScan，让用户看到"已复制"提示
+    await new Promise(r => setTimeout(r, 800));
+    // 4. 打开 BSCScan 验证页面
+    openBscScanVerify();
+    if(btn){
+      btn.textContent = '✅ 验证包已下载 · BSCScan 已打开 · 参数已复制';
+      setTimeout(() => { btn.disabled = false; btn.textContent = '🚀 一键验证（自动下载 JSON + 打开 BSCScan + 复制参数）'; }, 5000);
+    }
+  } catch(e) {
+    console.error('[oneClickVerify]', e);
+    if(btn){
+      btn.disabled = false;
+      btn.textContent = '🚀 一键验证（自动下载 JSON + 打开 BSCScan + 复制参数）';
+    }
+    alert('验证包生成失败：' + e.message);
+  }
 }
 
-function switchVerifyTab(tab, btn){
-  document.querySelectorAll('.verify-tab').forEach(function(t){ t.classList.remove('active'); });
-  document.querySelectorAll('.verify-panel').forEach(function(p){ p.classList.remove('active'); });
-  var panel = document.getElementById('vpanel-'+tab);
-  if(btn) btn.classList.add('active');
-  if(panel) panel.classList.add('active');
-  if(tab === 'bscscan') buildVerifyParamsPreview();
-  if(tab === 'forge') buildForgeCommand();
-}
-
-function buildVerifyParamsPreview(){
-  var container = document.getElementById('verify-params-preview');
-  if(!container) return;
-  var html = '<div style="font-size:.8rem;margin:6px 0;color:var(--text-muted)">\u6784\u9020\u51fd\u6570\u53c2\u6570 (ABI-encoded\uff0c\u4e0a\u4f20\u65f6\u586b\u5165 <b>Constructor Arguments</b> \u5b57\u6bb5\uff0c\u4e0d\u542b 0x \u524d\u7f00):</div>';
-  html += '<div class="verify-code" style="font-size:.72rem"><button class="copy-btn" onclick="copyCtorForVerify()">\u590d\u5236</button>';
-  html += (_verifyCtorArgsHex ? _verifyCtorArgsHex.replace(/^0x/,'') : '\uff08\u65e0\u6784\u9020\u51fd\u6570\u53c2\u6570\uff09') + '</div>';
-  container.innerHTML = html;
+/**
+ * 静默下载验证 JSON（不弹 alert）
+ */
+async function downloadVerifyJsonSilent(){
+  if(!_verifyContractAddr) throw new Error('合约地址未知');
+  var resp = await fetch('ModaMintToken.sol');
+  if(!resp.ok) throw new Error('无法读取 ModaMintToken.sol');
+  var src = await resp.text();
+  var standardJson = {
+    language: 'Solidity',
+    sources: {
+      'ModaMintToken.sol': { content: src }
+    },
+    settings: {
+      evmVersion: 'paris',
+      viaIR: true,
+      optimizer: { enabled: true, runs: 200 },
+      outputSelection: {
+        '*': {
+          '*': ['evm.bytecode.object', 'evm.deployedBytecode.object', 'abi', 'devdoc', 'userdoc', 'metadata', 'storageLayout']
+        }
+      }
+    }
+  };
+  var jsonStr = JSON.stringify(standardJson, null, 2);
+  var blob = new Blob([jsonStr], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'bsc-verify-' + _verifyContractAddr.slice(2,8) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function buildForgeCommand(){
@@ -1670,22 +1653,6 @@ async function copyCtorArgs(){
   await copyText(_verifyCtorArgsHex ? _verifyCtorArgsHex.replace(/^0x/,'') : '');
 }
 
-async function copyCtorForVerify(){
-  await copyText(_verifyCtorArgsHex ? _verifyCtorArgsHex.replace(/^0x/,'') : '');
-}
-
-async function copyVerifyParams(){
-  var params = [
-    '\u5408\u7ea6\u540d\u79f0: ModaMintToken',
-    '\u7f16\u8bd1\u5668: v0.8.20+commit.a1b79de6',
-    '\u4f18\u5316: Yes, 200 runs',
-    'Via-IR: Enabled',
-    '\u6784\u9020\u51fd\u6570\u53c2\u6570 (ABI-encoded):',
-    (_verifyCtorArgsHex ? _verifyCtorArgsHex.replace(/^0x/,'') : '\uff08\u65e0\uff09')
-  ].join('\n');
-  await copyText(params);
-}
-
 async function copyText(text){
   try {
     await navigator.clipboard.writeText(text);
@@ -1702,50 +1669,12 @@ async function copyText(text){
 }
 
 async function downloadVerifyJson(){
-  if(!_verifyContractAddr){
-    alert('\u5408\u7ea6\u5730\u5740\u672a\u77e5\uff0c\u8bf7\u5148\u5b8c\u6210\u90e8\u7f72');
-    return;
-  }
   try {
-    var resp = await fetch('ModaMintToken.sol');
-    if(!resp.ok) throw new Error('\u65e0\u6cd5\u8bfb\u53d6 ModaMintToken.sol\uff0c\u8bf7\u7861\u4fdd\u8be5\u6587\u4ef6\u4e0e launch.html \u5728\u540c\u4e00\u76ee\u5f55');
-    var src = await resp.text();
-    var standardJson = {
-      language: 'Solidity',
-      sources: {
-        'ModaMintToken.sol': { content: src }
-      },
-      settings: {
-        evmVersion: 'paris',
-        viaIR: true,
-        optimizer: { enabled: true, runs: 200 },
-        outputSelection: {
-          '*': {
-            '*': ['evm.bytecode.object', 'evm.deployedBytecode.object', 'abi', 'devdoc', 'userdoc', 'metadata', 'storageLayout']
-          }
-        }
-      }
-    };
-    var jsonStr = JSON.stringify(standardJson, null, 2);
-    var blob = new Blob([jsonStr], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'bsc-verify-' + _verifyContractAddr.slice(2,8) + '.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    var bscscanBase = isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com';
-    var verifyUrl = bscscanBase + '/verifyContract?a=' + _verifyContractAddr;
-
-    alert('\u2705 \u9a8c\u8bc1\u5305\u5df2\u4e0b\u8f7d\uff01\n\n\u63a5\u4e0b\u6765\u64cd\u4f5c\u6b65\u9aa4\uff1a\n\n1. \u6253\u5f00 BSCScan \u9a8c\u8bc1\u9875\u9762\n2. \u9a8c\u8bc1\u65b9\u5f0f\u9009\u62e9 "Solidity (Standard Json Input)"\n3. \u7f16\u8bd1\u5668\u7248\u672c\u9009\u62e9 "v0.8.20+commit.a1b79de6"\n4. \u5408\u7ea6\u540d\u79f0\u586b\u5199 "ModaMintToken"\n5. \u4e0a\u4f20\u521a\u624d\u4e0b\u8f7d\u7684 JSON \u6587\u4ef6\n6. \u70b9\u51fb "Verify and Publish"\n\n\u6ce8\u610f\uff1a\u7f16\u8bd1\u5668\u7248\u672c\u5fc5\u987b\u7cbe\u786e\u5339\u914d "v0.8.20+commit.a1b79de6"\uff0c\u5426\u5219\u4f1a\u5bfc\u81f4 bytecode \u4e0d\u5339\u914d\u3002');
-
-    // 自动打开验证页面
-    window.open(verifyUrl, '_blank');
+    await downloadVerifyJsonSilent();
+    alert('✅ 验证包已下载！接下来打开 BSCScan 验证页面即可。');
+    openBscScanVerify();
   } catch(e) {
-    alert('\u274c \u751f\u6210\u9a8c\u8bc1\u5305\u5931\u8d25\uff1a' + e.message);
+    alert('❌ 生成验证包失败：' + e.message);
     console.error(e);
   }
 }
