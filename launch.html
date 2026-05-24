@@ -360,14 +360,8 @@
       .wallet-banner { flex-direction:column; align-items:flex-start; }
     }
   </style>
-  <!-- ethers.js v5 + 合约编译数据 -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
-  <script>
-    if(typeof ethers === 'undefined'){
-      // cdnjs 备用：jsdelivr
-      document.write('<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"><\/script>');
-    }
-  </script>
+  <!-- ethers.js v5 本地文件 + 合约编译数据 -->
+  <script src="ethers.umd.min.js"></script>
   <script src="contract_data.js"></script>
 </head>
 <body>
