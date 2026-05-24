@@ -362,7 +362,27 @@
   </style>
   <!-- ethers.js v5 本地文件 + 合约编译数据 -->
   <script src="ethers.umd.min.js"></script>
-  <script src="contract_data.js"></script>
+  <script src="contract_data.js?v=20260524"></script>
+  <script>
+    // 合约代码版本校验 — 检查 bytecode 长度确保是最新编译版本
+    if(typeof CONTRACT_BYTECODE === 'string'){
+      // 新版 via-ir 编译的 bytecode 长度约为 18128 字符（含 0x 前缀）
+      // 旧版 bytecode 长度不同
+      var bcLen = CONTRACT_BYTECODE.length;
+      console.log('[版本检测] CONTRACT_BYTECODE 长度:', bcLen);
+      // 检查是否包含新版标志字符串（可能被编译器优化，不保证存在）
+      var bcLower = CONTRACT_BYTECODE.toLowerCase().replace('0x','');
+      // 新版包含 "Wallet zero" 和 "Mint cost"
+      var hasWalletZero = bcLower.indexOf('57616c6c6574207a65726f') !== -1;
+      var hasMintCost = bcLower.indexOf('4d696e7420636f7374') !== -1;
+      console.log('[版本检测] Wallet zero:', hasWalletZero, '| Mint cost:', hasMintCost);
+      if(hasWalletZero && hasMintCost){
+        console.log('[版本检测] ✅ contract_data.js 为最新编译版本（无 2 BNB 限制）');
+      } else {
+        console.warn('[版本检测] ⚠️ contract_data.js 可能不是最新版本，建议 Ctrl+Shift+R 强制刷新');
+      }
+    }
+  </script>
   <script src="factory_data.js"></script>
 </head>
 <body>
@@ -1164,7 +1184,18 @@ async function launchToken(){
     // ===== 阶段4：估算 Gas + 参数确认 =====
     statusText.textContent = '📊 估算 Gas...';
     const salt = vanityResult ? vanityResult.salt : ethers.constants.HashZero;
-    const gasEst = await factoryContract.estimateGas.deploy(salt, initCode);
+    let gasEst;
+    try {
+      gasEst = await factoryContract.estimateGas.deploy(salt, initCode);
+    } catch(gasErr) {
+      console.error('Gas 估算失败:', gasErr);
+      let hint2 = '';
+      if(gasErr.message && gasErr.message.includes('Fill')) hint2 = '（预售硬顶参数可能有误）';
+      else if(gasErr.message && gasErr.message.includes('Mint cost')) hint2 = '（Mint 费用参数可能有误）';
+      else if(gasErr.message && gasErr.message.includes('execution reverted')) hint2 = '（合约构造函数执行失败，请检查所有参数）';
+      else if(gasErr.code === -32603) hint2 = '（合约会 revert，请检查参数是否满足部署条件）';
+      throw new Error('Gas 估算失败: 合约部署会失败' + hint2 + '。如果预售硬顶低于 2 BNB，请确保已强制刷新页面（Ctrl+Shift+R）加载最新合约代码。原始错误: ' + (gasErr.reason || gasErr.message || gasErr.code));
+    }
     const gasPrice = await signer.getGasPrice();
     const gasBNB = ethers.utils.formatEther(gasEst.mul(gasPrice));
     const gasStr = parseFloat(gasBNB).toFixed(5);
@@ -1277,6 +1308,7 @@ async function launchToken(){
 
   } catch(e){
     console.error('部署失败:', e);
+    console.error('部署失败详情:', JSON.stringify({code: e.code, reason: e.reason, message: e.message?.substring(0,500), data: e.data}));
     // 如果是用户关闭弹窗导致的取消
     if(e.message === 'USER_CANCELLED'){
       closeModal();
@@ -1303,14 +1335,37 @@ async function launchToken(){
 }
 
 function getErrorMsg(e){
+  // MetaMask 内部错误（chrome-extension://...）通常包裹了实际原因
+  let innerMsg = '';
+  if(e.message && e.message.includes('chrome-extension://')){
+    // 从 MetaMask 错误堆栈中提取实际的 revert reason
+    const revertMatch = e.message.match(/revert[^"]*"([^"]+)"/);
+    if(revertMatch) innerMsg = revertMatch[1];
+    // 也检查 data 字段中的 ABI-encoded revert reason
+    if(e.data && e.data.indexOf('0x') === 0 && e.data.length > 10){
+      try {
+        const reason = ethers.utils.defaultAbiCoder.decode(['string'], '0x' + e.data.slice(10));
+        innerMsg = reason[0];
+      } catch(ignored){}
+    }
+    if(innerMsg){
+      return '合约执行失败: ' + innerMsg + '。<br/>如果是预售硬顶相关问题，请确保参数正确。';
+    }
+    return '合约部署失败，可能是参数导致合约构造函数执行出错。<br/>请检查预售硬顶（必须 > 0）、单次 Mint 费用（必须 > 0）、税费分配（必须 = 100%）等参数。<br/><span style="font-size:.78rem;color:var(--text-muted)">如果之前设过 ≥2 BNB 的硬顶才成功，请按 <b>Ctrl+Shift+R</b> 强制刷新页面确保加载最新合约代码。</span>';
+  }
   if(e.code === 4001) return '你拒绝了钱包交易请求。';
-  if(e.code === -32603) return 'Gas 估算失败，请检查参数是否合理。';
+  if(e.code === -32603){
+    let extra = '';
+    if(e.message && e.message.includes('execution reverted')) extra = '<br/>合约构造函数执行会失败，请检查参数。';
+    if(e.reason) extra = '<br/>原因: ' + e.reason;
+    return 'Gas 估算失败，合约部署会 revert。' + extra + '<br/>如果是预售硬顶相关问题，请确保已 Ctrl+Shift+R 刷新页面。';
+  }
   if(e.message && e.message.includes('insufficient funds'))
     return 'BNB 余额不足，请充值后重试。';
   if(e.message && e.message.includes('Tax alloc'))
     return '税费分配参数错误，请确保总和等于 100%。';
   if(e.message && e.message.includes('Fill min'))
-    return '预售硬顶必须大于 0。';
+    return '预售硬顶必须大于 0。<br/><span style="font-size:.78rem;color:var(--text-muted)">⚠️ 如果您看到此错误，说明浏览器可能缓存了旧版合约代码（有 2 BNB 最低限制）。请按 <b>Ctrl+Shift+R</b> 强制刷新页面。</span>';
   if(e.message && e.message.includes('Mint cost'))
     return '单次 Mint 费用必须大于 0，且不能超过预售硬顶。';
   if(e.message && e.message.includes('Below min'))
@@ -1319,7 +1374,10 @@ function getErrorMsg(e){
     return '资金钱包地址不能为零地址。请填写有效的 BSC 地址。';
   if(e.message && e.message.includes('collision'))
     return e.message;
-  return e.message || JSON.stringify(e);
+  // 通用兜底 — 提供有用的调试信息
+  let detail = e.reason || e.message || JSON.stringify(e);
+  if(detail.length > 300) detail = detail.substring(0, 300) + '...';
+  return '部署出错: ' + detail;
 }
 
 /* ─── 弹窗控制 ─── */
