@@ -664,7 +664,7 @@
     <div class="modal-actions">
       <button class="btn-copy" id="btn-copy" onclick="copyContract()" style="display:none">📋 复制</button>
       <a class="btn-bscscan" id="btn-bscscan" href="#" target="_blank" style="display:none">View on BscScan ↗</a>
-      <button class="btn-close-modal" onclick="closeModal()">关闭</button>
+      <button class="btn-close-modal" id="btn-close-modal" onclick="closeModal()">关闭</button>
     </div>
   </div>
 </div>
@@ -950,6 +950,7 @@ async function deployContract(){
 
   // 显示弹窗 - 准备阶段
   modal.classList.add('show');
+  setModalClosable(false);
   modalIcon.textContent = '🛸';
   modalTitle.textContent = '正在准备部署...';
   modalDesc.textContent = '正在初始化合约工厂...';
@@ -959,6 +960,8 @@ async function deployContract(){
   contractBox.style.display = 'none';
   btnCopy.style.display = 'none';
   btnBsc.style.display = 'none';
+
+  let deployTxHash = '';
 
   try {
     const p = getFormParams();
@@ -970,9 +973,22 @@ async function deployContract(){
       alloc: [p.marketingBps, p.burnBps, p.dividendBps, p.liquidityBps]
     });
 
+    // 再次确认网络
+    const net = await provider.getNetwork();
+    const currentChainId = net.chainId;
+    const targetChainId = isTestnet ? 97 : 56;
+    if(currentChainId !== targetChainId){
+      console.warn('网络不匹配! 当前:', currentChainId, '目标:', targetChainId);
+      await switchToBSC();
+      await new Promise(r => setTimeout(r, 2000)); // 等待切换生效
+      const net2 = await provider.getNetwork();
+      isTestnet = (net2.chainId === 97);
+    }
+    const networkLabel = isTestnet ? 'BSC 测试网' : 'BSC 主网';
+
     // 步骤 3a: 估算 Gas
     statusText.textContent = '📊 估算 Gas 费用...';
-    modalDesc.textContent = '正在估算部署所需 Gas...';
+    modalDesc.textContent = `正在估算部署所需 Gas（${networkLabel}）...`;
 
     const factory = new ethers.ContractFactory(CONTRACT_ABI, CONTRACT_BYTECODE, signer);
     const deployTx = await factory.getDeployTransaction(
@@ -988,7 +1004,7 @@ async function deployContract(){
     const gasCost = gasEstimate.mul(gasPrice);
     const gasBNB = ethers.utils.formatEther(gasCost);
 
-    modalDesc.textContent = '预估 Gas 费用：' + parseFloat(gasBNB).toFixed(5) + ' BNB';
+    modalDesc.innerHTML = `预估 Gas：<strong>${parseFloat(gasBNB).toFixed(5)} BNB</strong>（${networkLabel}）<br/><span style="font-size:.8rem;color:var(--text-muted)">⚠️ 请勿关闭此窗口，等待钱包确认后继续...</span>`;
     statusText.textContent = '📱 请在钱包中确认交易...';
     modalTitle.textContent = '代币发射中！';
 
@@ -1001,37 +1017,72 @@ async function deployContract(){
       p.marketingWallet, p.dividendToken
     );
 
-    statusText.textContent = '⏳ 交易已提交，等待链上确认...';
-    modalDesc.textContent = '交易 Hash: ' + contract.deployTransaction.hash;
+    deployTxHash = contract.deployTransaction.hash;
+    const txExplorer = (isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com') + '/tx/' + deployTxHash;
+    statusText.innerHTML = '⏳ 交易已提交，等待链上确认...<br/><a href="' + txExplorer + '" target="_blank" style="color:var(--accent2);font-size:.8rem">查看交易详情 ↗</a>';
+    modalDesc.innerHTML = '交易 Hash：<code style="word-break:break-all;font-size:.78rem;color:var(--accent1)">' + deployTxHash + '</code><br/><span style="font-size:.8rem;color:var(--text-muted)">正在等待区块确认，请耐心等待（约 3-15 秒）...</span>';
 
-    // 步骤 3c: 等待确认
-    await contract.deployed();
+    // 步骤 3c: 等待确认，显式获取 receipt 并验证
+    const receipt = await provider.waitForTransaction(deployTxHash, 1, 180000); // 1确认，最多等3分钟
 
-    // 步骤 4: 成功！
-    const contractAddr = contract.address;
+    // ★ 关键：检查 receipt 状态
+    if(receipt.status === 0){
+      throw new Error('交易已上链但执行失败（revert），合约未部署。Gas 已消耗。可能是合约构造函数执行出错，请检查参数。');
+    }
+    if(!receipt.contractAddress){
+      throw new Error('交易成功但未返回合约地址。这可能是网络问题或交易被替换。请检查钱包交易记录。');
+    }
+
+    // 步骤 4: 真正成功！使用 receipt 中的实际地址
+    const contractAddr = receipt.contractAddress;
     modalSpinner.style.display = 'none';
     modalIcon.textContent = '🎉';
     modalTitle.textContent = '发射成功！';
-    modalDesc.textContent = '你的代币合约已成功部署到 BNB Chain！\nGas 消耗：' + parseFloat(gasBNB).toFixed(5) + ' BNB';
-    statusText.textContent = '✅ 合约部署完成';
+    modalDesc.innerHTML = `✅ 代币合约已成功部署到 ${networkLabel}！<br/>Gas 消耗：${parseFloat(gasBNB).toFixed(5)} BNB · 区块：${receipt.blockNumber}`;
+    statusText.textContent = '✅ 合约部署完成（已上链确认）';
     document.getElementById('contract-addr').textContent = contractAddr;
     contractBox.style.display = 'block';
     btnCopy.style.display = 'inline-flex';
-    btnBsc.href = (isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com') + '/address/' + contractAddr;
+
+    const explorerBase = isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com';
+    btnBsc.href = explorerBase + '/address/' + contractAddr;
     btnBsc.style.display = 'inline-flex';
-    btnBsc.textContent = isTestnet ? 'View on Testnet BscScan ↗' : 'View on BscScan ↗';
+    btnBsc.textContent = 'View on BscScan ↗';
+
+    // 添加交易链接
+    let txLinkEl = document.getElementById('tx-link');
+    if(!txLinkEl){
+      txLinkEl = document.createElement('a');
+      txLinkEl.id = 'tx-link';
+      txLinkEl.target = '_blank';
+      txLinkEl.className = 'btn-bscscan';
+      txLinkEl.style.cssText = 'display:inline-flex;margin-top:8px;font-size:.82rem';
+      contractBox.parentNode.insertBefore(txLinkEl, btnCopy);
+    }
+    txLinkEl.href = explorerBase + '/tx/' + deployTxHash;
+    txLinkEl.textContent = '查看部署交易 ↗';
+    txLinkEl.style.display = 'inline-flex';
 
     setStep(3,'done'); setStep(4,'done'); setLine(3,'done');
-
-    console.log('✅ 合约已部署:', contractAddr);
+    setModalClosable(true);
+    console.log('✅ 合约已部署:', contractAddr, '交易:', deployTxHash, '区块:', receipt.blockNumber);
 
   } catch(e){
     console.error('部署失败:', e);
     modalSpinner.style.display = 'none';
     modalIcon.textContent = '❌';
     modalTitle.textContent = '部署失败';
-    modalDesc.textContent = getErrorMsg(e);
+
+    let errorMsg = getErrorMsg(e);
+    let hint = '';
+
+    if(deployTxHash){
+      const explorerBase = isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com';
+      hint = '<br/><br/><span style="font-size:.82rem">交易 Hash: <a href="' + explorerBase + '/tx/' + deployTxHash + '" target="_blank" style="color:var(--accent2)">' + deployTxHash.slice(0,10) + '...' + deployTxHash.slice(-8) + '</a></span>';
+    }
+    modalDesc.innerHTML = errorMsg + hint;
     statusText.textContent = '❌ ' + (e.code === 4001 ? '用户拒绝交易' : '部署出错');
+    setModalClosable(true);
     // 允许重试
     setStep(2,'active'); setStep(3,'active'); setLine(2,'active');
   }
@@ -1050,8 +1101,25 @@ function getErrorMsg(e){
 }
 
 /* ─── 弹窗控制 ─── */
+function setModalClosable(allowed){
+  const btn = document.getElementById('btn-close-modal');
+  if(allowed){
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.textContent = '关闭';
+    btn.onclick = closeModal;
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '.4';
+    btn.style.cursor = 'not-allowed';
+    btn.textContent = '⏳ 等待确认中...';
+    btn.onclick = function(){ alert('部署正在进行中，请勿关闭！'); };
+  }
+}
 function closeModal(){
   document.getElementById('modal').classList.remove('show');
+  setModalClosable(true);
 }
 
 function copyContract(){
