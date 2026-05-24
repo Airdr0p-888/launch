@@ -7,18 +7,18 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg-deep:    #f5f3ff;
-      --bg-card:    #ffffff;
-      --bg-input:   #f8f7fc;
-      --accent1:    #0d9488;
-      --accent2:    #7c3aed;
-      --accent3:    #d97706;
-      --danger:     #ef4444;
-      --success:    #16a34a;
-      --text-main:  #1e293b;
-      --text-muted: #64748b;
-      --border:     #e2e8f0;
-      --border-focus: rgba(13,148,136,.5);
+      --bg-deep:    #e8e4f0;
+      --bg-card:    #f0edf7;
+      --bg-input:   #e4e0ed;
+      --accent1:    #0f766e;
+      --accent2:    #6d28d9;
+      --accent3:    #b45309;
+      --danger:     #dc2626;
+      --success:    #15803d;
+      --text-main:  #1e1b35;
+      --text-muted: #5b5a72;
+      --border:     #cdc8dc;
+      --border-focus: rgba(15,118,110,.45);
       --radius: 12px;
       --font: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
     }
@@ -50,7 +50,7 @@
     /* ── 导航 ── */
     header {
       position:sticky; top:0; z-index:100;
-      background:rgba(245,243,255,.85); backdrop-filter:blur(16px);
+      background:rgba(232,228,240,.88); backdrop-filter:blur(16px);
       border-bottom:1px solid var(--border);
     }
     nav {
@@ -360,6 +360,9 @@
       .wallet-banner { flex-direction:column; align-items:flex-start; }
     }
   </style>
+  <!-- ethers.js v5 + 合约编译数据 -->
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+  <script src="contract_data.js"></script>
 </head>
 <body>
 
@@ -667,67 +670,147 @@
 </div>
 
 <script>
+/* ================================================================
+   外星王 ALIEN MINT — 真实 BSC 链合约部署
+   支持：MetaMask / TokenPocket
+   ================================================================ */
+
+/* ─── 常量 ─── */
+const BSC_CHAIN_ID = 56;
+const BSC_MAINNET = {
+  chainId: '0x' + BSC_CHAIN_ID.toString(16),
+  chainName: 'BNB Smart Chain Mainnet',
+  nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+  rpcUrls: ['https://bsc-dataseed.binance.org/'],
+  blockExplorerUrls: ['https://bscscan.com']
+};
+const BSC_TESTNET = {
+  chainId: '0x38',
+  chainName: 'BNB Smart Chain Testnet',
+  nativeCurrency: { name: 'tBNB', symbol: 'tBNB', decimals: 18 },
+  rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545/'],
+  blockExplorerUrls: ['https://testnet.bscscan.com']
+};
+
+let provider, signer, walletConnected = false, currentAccount = '';
+let isTestnet = false; // 默认主网
+
 /* ─── 星空 ─── */
 (function(){
   const w=document.getElementById('stars');
   for(let i=0;i<140;i++){
     const s=document.createElement('div'); s.className='star';
     const sz=Math.random()*2.5+.5;
-    s.style.cssText=[`width:${sz}px`,`height:${sz}px`,
-      `left:${Math.random()*100}%`,`top:${Math.random()*100}%`,
-      `--dur:${(Math.random()*4+2).toFixed(1)}s`,
-      `--delay:${(Math.random()*5).toFixed(1)}s`,
-      `--op:${(Math.random()*.6+.3).toFixed(2)}`].join(';');
+    s.style.cssText=['width:'+sz+'px','height:'+sz+'px',
+      'left:'+Math.random()*100+'%','top:'+Math.random()*100+'%',
+      '--dur:'+(Math.random()*4+2).toFixed(1)+'s',
+      '--delay:'+(Math.random()*5).toFixed(1)+'s',
+      '--op:'+(Math.random()*.6+.3).toFixed(2)].join(';');
     w.appendChild(s);
   }
 })();
 
-/* ─── 钱包连接 ─── */
-let walletConnected = false;
-async function connectWallet(){
-  if(typeof window.ethereum === 'undefined'){
-    alert('请先安装 MetaMask 钱包插件！');
-    window.open('https://metamask.io/download/','_blank'); return;
-  }
+/* ─── 获取钱包 Provider（优先 TokenPocket） ─── */
+function getWalletProvider(){
+  if(window.tokenpocket && window.tokenpocket.isTokenPocket) return window.tokenpocket;
+  if(window.ethereum) return window.ethereum;
+  return null;
+}
+
+/* ─── 切换到 BSC 网络 ─── */
+async function switchToBSC(){
+  const wallet = getWalletProvider();
+  if(!wallet) throw new Error('未检测到钱包');
+  const targetChain = isTestnet ? BSC_TESTNET : BSC_MAINNET;
   try {
-    const accounts = await window.ethereum.request({method:'eth_requestAccounts'});
-    const addr = accounts[0];
-    walletConnected = true;
-    document.getElementById('btn-connect').textContent = '已连接 ✓';
-    document.getElementById('btn-connect').style.background = 'rgba(34,197,94,.15)';
-    document.getElementById('btn-connect').style.borderColor = 'rgba(34,197,94,.4)';
-    document.getElementById('btn-connect').style.color = '#22c55e';
-    document.getElementById('wallet-addr-display').textContent = addr.slice(0,6)+'...'+addr.slice(-4);
-    document.getElementById('wallet-addr-display').style.display = 'inline';
-    document.getElementById('wallet-banner').classList.add('hidden');
-    document.getElementById('btn-launch').disabled = false;
-    document.getElementById('launch-hint').textContent = '请确保填写所有必填项后提交';
-    // 步骤更新
-    setStep(1,'done'); setStep(2,'active');
-    setLine(1,'done');
+    await wallet.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: targetChain.chainId }] });
   } catch(e){
-    console.warn(e);
-    alert('连接钱包失败：' + (e.message||e));
+    // 4902 = 链不存在，添加
+    if(e.code === 4902){
+      await wallet.request({ method: 'wallet_addEthereumChain', params: [targetChain] });
+    } else throw e;
   }
 }
 
+/* ─── 连接钱包 ─── */
+async function connectWallet(){
+  const wallet = getWalletProvider();
+  if(!wallet){
+    alert('未检测到钱包！\n\n请安装：\n• MetaMask: https://metamask.io\n• TokenPocket: https://tokenpocket.pro');
+    return;
+  }
+  try {
+    // 切换到 BSC
+    await switchToBSC();
+    // 请求账户
+    const accounts = await wallet.request({ method: 'eth_requestAccounts' });
+    if(!accounts || accounts.length === 0) throw new Error('未获取到账户');
+    currentAccount = accounts[0];
+    provider = new ethers.providers.Web3Provider(wallet);
+    signer = provider.getSigner();
+    walletConnected = true;
+
+    // 检测钱包类型
+    const walletType = window.tokenpocket && window.tokenpocket.isTokenPocket ? 'TokenPocket' : 'MetaMask';
+
+    document.getElementById('btn-connect').textContent = walletType + ' ✓';
+    document.getElementById('btn-connect').style.background = 'rgba(34,197,94,.15)';
+    document.getElementById('btn-connect').style.borderColor = 'rgba(34,197,94,.4)';
+    document.getElementById('btn-connect').style.color = '#15803d';
+    document.getElementById('wallet-addr-display').textContent = currentAccount.slice(0,6)+'...'+currentAccount.slice(-4);
+    document.getElementById('wallet-addr-display').style.display = 'inline';
+    document.getElementById('wallet-banner').classList.add('hidden');
+    document.getElementById('btn-launch').disabled = false;
+    document.getElementById('launch-hint').textContent = '请确保填写所有必填项后提交（部署将消耗 BNB Gas 费）';
+
+    // 显示网络信息
+    const net = await provider.getNetwork();
+    isTestnet = (net.chainId === 97);
+    console.log('已连接', walletType, '网络:', isTestnet ? 'BSC Testnet' : 'BSC Mainnet');
+
+    setStep(1,'done'); setStep(2,'active'); setLine(1,'done');
+
+    // 监听账户/链切换
+    wallet.on('accountsChanged', (accts) => {
+      if(accts.length === 0){ disconnectWallet(); return; }
+      currentAccount = accts[0];
+      signer = provider.getSigner();
+      document.getElementById('wallet-addr-display').textContent = currentAccount.slice(0,6)+'...'+currentAccount.slice(-4);
+    });
+    wallet.on('chainChanged', () => location.reload());
+  } catch(e){
+    console.error(e);
+    alert('连接钱包失败：' + (e.message || e));
+  }
+}
+
+function disconnectWallet(){
+  walletConnected = false; currentAccount = '';
+  document.getElementById('btn-connect').textContent = '连接钱包 📡';
+  document.getElementById('btn-connect').style.cssText = '';
+  document.getElementById('wallet-addr-display').style.display = 'none';
+  document.getElementById('wallet-banner').classList.remove('hidden');
+  document.getElementById('btn-launch').disabled = true;
+  document.getElementById('launch-hint').textContent = '⚠️ 请先连接钱包才能发射代币';
+  setStep(1,'active');
+}
+
+/* ─── 步骤 ─── */
 function setStep(n, state){
   const c=document.getElementById('sc'+n), l=document.getElementById('sl'+n);
-  c.className='step-circle'; l.className='step-label';
+  c.className='step-circle'; c.textContent=n; l.className='step-label';
   if(state==='done'){ c.classList.add('done'); c.textContent='✓'; }
   else if(state==='active'){ c.classList.add('active'); l.classList.add('active'); }
 }
 function setLine(n, state){
   const line=document.getElementById('line'+n);
-  if(state==='done') line.classList.add('done');
+  line.className = state==='done' ? 'step-line done' : 'step-line';
 }
 
 /* ─── 链选择 ─── */
 function selectChain(id){
   if(id==='eth') return;
-  document.querySelectorAll('.chain-opt:not(.disabled)').forEach(el=>{
-    el.classList.remove('selected');
-  });
+  document.querySelectorAll('.chain-opt:not(.disabled)').forEach(el => el.classList.remove('selected'));
   document.getElementById('chain-'+id).classList.add('selected');
 }
 
@@ -754,41 +837,37 @@ function handleDrop(e){
   reader.readAsDataURL(file);
 }
 
-/* ─── 滑块更新 ─── */
+/* ─── 滑块 ─── */
 function updateSlider(el, labelId){
   const val = parseFloat(el.value);
   document.getElementById(labelId).textContent = val + '%';
   const pct = (val / parseFloat(el.max)) * 100;
   el.style.setProperty('--pct', pct + '%');
 }
-
 function updateProtect(el){
   const val = parseInt(el.value);
   document.getElementById('protect-val').textContent = val + ' 天';
-  const pct = (val / 365) * 100;
-  el.style.setProperty('--pct', pct + '%');
+  el.style.setProperty('--pct', (val / 365 * 100) + '%');
 }
 
 /* ─── 税费分配 ─── */
 const allocKeys = ['fund','burn','div','liq'];
 function updateAlloc(el, key){
   const val = parseInt(el.value);
-  const pct = (val/100)*100;
   document.getElementById(key+'-pct').textContent = val + '%';
-  document.getElementById(key+'-bar').style.width = pct + '%';
-  el.style.setProperty('--pct', pct + '%');
-  // 计算总计
+  document.getElementById(key+'-bar').style.width = val + '%';
+  el.style.setProperty('--pct', val + '%');
   let total = 0;
   allocKeys.forEach(k => {
-    const slider = el.closest('.alloc-grid').querySelector(`#${k}-pct`);
-    if(slider) total += parseInt(slider.textContent) || 0;
+    const s = el.closest('.alloc-grid').querySelector('#'+k+'-pct');
+    if(s) total += parseInt(s.textContent) || 0;
   });
   const totalEl = document.getElementById('alloc-total');
   const remainEl = document.getElementById('alloc-remain');
   totalEl.textContent = total + '%';
   const remain = 100 - total;
-  remainEl.textContent = remain >= 0 ? `未分配: ${remain}%` : `超出: ${-remain}%`;
-  totalEl.className = 'alloc-total-val ' + (total === 100 ? 'ok' : (total > 100 ? 'error' : ''));
+  remainEl.textContent = remain >= 0 ? '未分配: '+remain+'%' : '超出: '+(-remain)+'%';
+  totalEl.className = 'alloc-total-val ' + (total===100?'ok':(total>100?'error':''));
 }
 
 /* ─── 表单验证 ─── */
@@ -803,49 +882,174 @@ function validate(){
   if(!sup || parseFloat(sup) <= 0){ alert('请填写有效的代币总供应量'); return false; }
   if(!mint || parseFloat(mint) <= 0){ alert('请填写有效的单次 Mint 数量'); return false; }
   if(!fill || parseFloat(fill) < 2){ alert('打满数量最低为 2 BNB'); return false; }
+  // 税费分配必须 = 100%
+  let total = 0;
+  allocKeys.forEach(k => {
+    const s = document.getElementById(k+'-pct');
+    if(s) total += parseInt(s.textContent) || 0;
+  });
+  if(total !== 100){ alert('税费分配总计必须等于 100%（当前：'+total+'%）'); return false; }
   return true;
 }
 
-/* ─── 发射代币 ─── */
+/* ─── 读取表单参数 ─── */
+function getFormParams(){
+  const name    = document.getElementById('token-name').value.trim();
+  const symbol  = document.getElementById('token-symbol').value.trim();
+  const supply  = document.getElementById('total-supply').value;
+  const mintAmt = document.getElementById('mint-amount').value;
+  const fillAmt = document.getElementById('fill-amount').value;
+  const buyTax  = parseFloat(document.getElementById('buy-tax').value);       // %
+  const sellTax = parseFloat(document.getElementById('sell-tax').value);       // %
+  const protect = parseInt(document.getElementById('protect-days').value);     // 天
+  const fundPct = parseInt(document.getElementById('fund-pct').textContent)||0;
+  const burnPct = parseInt(document.getElementById('burn-pct').textContent)||0;
+  const divPct  = parseInt(document.getElementById('div-pct').textContent)||0;
+  const liqPct  = parseInt(document.getElementById('liq-pct').textContent)||0;
+  const fundAddr = document.getElementById('fund-addr').value.trim();
+  const divAddr  = document.getElementById('div-addr').value.trim();
+
+  return {
+    name, symbol,
+    totalSupply: ethers.utils.parseUnits(supply, 18),
+    mintPerBNB: ethers.utils.parseUnits(mintAmt, 18),
+    fillBNB: ethers.utils.parseEther(fillAmt),
+    buyTaxBps: Math.round(buyTax * 100),       // % -> bps
+    sellTaxBps: Math.round(sellTax * 100),
+    protectionBlocks: protect * 28800,           // ~3s/block on BSC
+    marketingBps: fundPct * 100,                 // % -> bps (of tax)
+    burnBps: burnPct * 100,
+    dividendBps: divPct * 100,
+    liquidityBps: liqPct * 100,
+    marketingWallet: fundAddr || currentAccount,
+    dividendToken: divAddr || ethers.constants.AddressZero
+  };
+}
+
+/* ================================================================
+   ★ 核心部署逻辑
+   ================================================================ */
 async function launchToken(){
   if(!walletConnected){ alert('请先连接钱包！'); return; }
   if(!validate()) return;
   setStep(2,'done'); setStep(3,'active'); setLine(2,'done');
-  showModal();
+  await deployContract();
 }
 
-function showModal(){
-  document.getElementById('modal').classList.add('show');
-  document.getElementById('modal-icon').textContent = '🛸';
-  document.getElementById('modal-title').textContent = '代币发射中！';
-  document.getElementById('modal-desc').textContent = '请在 MetaMask 中确认交易...';
-  document.getElementById('modal-status').style.display='flex';
-  document.getElementById('modal-spinner').style.display='block';
-  document.getElementById('modal-status-text').textContent = '⏳ 等待钱包确认';
-  document.getElementById('contract-box').style.display='none';
-  document.getElementById('btn-copy').style.display='none';
-  document.getElementById('btn-bscscan').style.display='none';
-  // 模拟交易流程（实际需接入合约 ABI）
-  setTimeout(()=>{
-    document.getElementById('modal-status-text').textContent = '⛓️ 交易已提交，等待链上确认...';
-  }, 2000);
-  setTimeout(()=>{
-    document.getElementById('modal-spinner').style.display='none';
-    document.getElementById('modal-icon').textContent = '🎉';
-    document.getElementById('modal-title').textContent = '发射成功！';
-    document.getElementById('modal-desc').textContent = '你的代币合约已成功部署到 BNB Chain！';
-    document.getElementById('modal-status-text').textContent = '✅ 合约部署完成';
-    const fakeAddr = '0x' + [...Array(40)].map(()=>'0123456789abcdef'[Math.floor(Math.random()*16)]).join('');
-    document.getElementById('contract-addr').textContent = fakeAddr;
-    document.getElementById('contract-box').style.display='block';
-    document.getElementById('btn-copy').style.display='inline-flex';
-    const scanBtn = document.getElementById('btn-bscscan');
-    scanBtn.href = 'https://bscscan.com/address/' + fakeAddr;
-    scanBtn.style.display='inline-flex';
-    setStep(3,'done'); setStep(4,'active'); setLine(3,'done');
-  }, 5000);
+async function deployContract(){
+  const modal = document.getElementById('modal');
+  const modalIcon = document.getElementById('modal-icon');
+  const modalTitle = document.getElementById('modal-title');
+  const modalDesc = document.getElementById('modal-desc');
+  const modalStatus = document.getElementById('modal-status');
+  const modalSpinner = document.getElementById('modal-spinner');
+  const statusText = document.getElementById('modal-status-text');
+  const contractBox = document.getElementById('contract-box');
+  const btnCopy = document.getElementById('btn-copy');
+  const btnBsc = document.getElementById('btn-bscscan');
+
+  // 显示弹窗 - 准备阶段
+  modal.classList.add('show');
+  modalIcon.textContent = '🛸';
+  modalTitle.textContent = '正在准备部署...';
+  modalDesc.textContent = '正在初始化合约工厂...';
+  modalStatus.style.display = 'flex';
+  modalSpinner.style.display = 'block';
+  statusText.textContent = '⏳ 初始化中';
+  contractBox.style.display = 'none';
+  btnCopy.style.display = 'none';
+  btnBsc.style.display = 'none';
+
+  try {
+    const p = getFormParams();
+    console.log('部署参数:', {
+      name: p.name, symbol: p.symbol,
+      totalSupply: p.totalSupply.toString(),
+      buyTax: p.buyTaxBps, sellTax: p.sellTaxBps,
+      protectionBlocks: p.protectionBlocks,
+      alloc: [p.marketingBps, p.burnBps, p.dividendBps, p.liquidityBps]
+    });
+
+    // 步骤 3a: 估算 Gas
+    statusText.textContent = '📊 估算 Gas 费用...';
+    modalDesc.textContent = '正在估算部署所需 Gas...';
+
+    const factory = new ethers.ContractFactory(CONTRACT_ABI, CONTRACT_BYTECODE, signer);
+    const deployTx = await factory.getDeployTransaction(
+      p.name, p.symbol,
+      p.totalSupply, p.mintPerBNB, p.fillBNB,
+      p.buyTaxBps, p.sellTaxBps, p.protectionBlocks,
+      p.marketingBps, p.burnBps, p.dividendBps, p.liquidityBps,
+      p.marketingWallet, p.dividendToken
+    );
+
+    const gasEstimate = await signer.estimateGas({ ...deployTx, from: currentAccount });
+    const gasPrice = await signer.getGasPrice();
+    const gasCost = gasEstimate.mul(gasPrice);
+    const gasBNB = ethers.utils.formatEther(gasCost);
+
+    modalDesc.textContent = '预估 Gas 费用：' + parseFloat(gasBNB).toFixed(5) + ' BNB';
+    statusText.textContent = '📱 请在钱包中确认交易...';
+    modalTitle.textContent = '代币发射中！';
+
+    // 步骤 3b: 发送交易
+    const contract = await factory.deploy(
+      p.name, p.symbol,
+      p.totalSupply, p.mintPerBNB, p.fillBNB,
+      p.buyTaxBps, p.sellTaxBps, p.protectionBlocks,
+      p.marketingBps, p.burnBps, p.dividendBps, p.liquidityBps,
+      p.marketingWallet, p.dividendToken
+    );
+
+    statusText.textContent = '⏳ 交易已提交，等待链上确认...';
+    modalDesc.textContent = '交易 Hash: ' + contract.deployTransaction.hash;
+
+    // 步骤 3c: 等待确认
+    await contract.deployed();
+
+    // 步骤 4: 成功！
+    const contractAddr = contract.address;
+    modalSpinner.style.display = 'none';
+    modalIcon.textContent = '🎉';
+    modalTitle.textContent = '发射成功！';
+    modalDesc.textContent = '你的代币合约已成功部署到 BNB Chain！\nGas 消耗：' + parseFloat(gasBNB).toFixed(5) + ' BNB';
+    statusText.textContent = '✅ 合约部署完成';
+    document.getElementById('contract-addr').textContent = contractAddr;
+    contractBox.style.display = 'block';
+    btnCopy.style.display = 'inline-flex';
+    btnBsc.href = (isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com') + '/address/' + contractAddr;
+    btnBsc.style.display = 'inline-flex';
+    btnBsc.textContent = isTestnet ? 'View on Testnet BscScan ↗' : 'View on BscScan ↗';
+
+    setStep(3,'done'); setStep(4,'done'); setLine(3,'done');
+
+    console.log('✅ 合约已部署:', contractAddr);
+
+  } catch(e){
+    console.error('部署失败:', e);
+    modalSpinner.style.display = 'none';
+    modalIcon.textContent = '❌';
+    modalTitle.textContent = '部署失败';
+    modalDesc.textContent = getErrorMsg(e);
+    statusText.textContent = '❌ ' + (e.code === 4001 ? '用户拒绝交易' : '部署出错');
+    // 允许重试
+    setStep(2,'active'); setStep(3,'active'); setLine(2,'active');
+  }
 }
 
+function getErrorMsg(e){
+  if(e.code === 4001) return '你拒绝了钱包交易请求。';
+  if(e.code === -32603) return 'Gas 估算失败，请检查参数是否合理。';
+  if(e.message && e.message.includes('insufficient funds'))
+    return 'BNB 余额不足，请充值后重试。';
+  if(e.message && e.message.includes('Tax alloc'))
+    return '税费分配参数错误，请确保总和等于 100%。';
+  if(e.message && e.message.includes('Fill min'))
+    return '打满数量必须 ≥ 2 BNB。';
+  return e.message || JSON.stringify(e);
+}
+
+/* ─── 弹窗控制 ─── */
 function closeModal(){
   document.getElementById('modal').classList.remove('show');
 }
@@ -856,10 +1060,19 @@ function copyContract(){
     const btn = document.getElementById('btn-copy');
     btn.textContent = '✅ 已复制';
     setTimeout(()=>{ btn.textContent='📋 复制'; }, 2000);
-  }).catch(()=> alert('复制失败，请手动复制'));
+  }).catch(()=>{
+    // 降级方案
+    const ta = document.createElement('textarea');
+    ta.value = addr; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = '✅ 已复制';
+    setTimeout(()=>{ btn.textContent='📋 复制'; }, 2000);
+  });
 }
 
-/* ─── 初始化滑块渐变色 ─── */
+/* ─── 初始化滑块 ─── */
 document.querySelectorAll('input[type=range]').forEach(el => {
   const pct = ((parseFloat(el.value) - parseFloat(el.min)) / (parseFloat(el.max) - parseFloat(el.min))) * 100;
   el.style.setProperty('--pct', pct + '%');
