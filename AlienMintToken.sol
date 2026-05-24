@@ -64,8 +64,9 @@ contract AlienMintToken is IERC20, Ownable {
     mapping(address => mapping(address => uint256)) private _allowances;
 
     // Mint 预售
-    uint256 public mintAmountPerBNB;
-    uint256 public fillAmountBNB;
+    uint256 public mintCostBNB;       // 单次 Mint 花费多少 BNB (wei)
+    uint256 public tokensPerMint;     // 单次 Mint 获得多少代币
+    uint256 public fillAmountBNB;     // 预售硬顶 (wei)
     uint256 public totalBNBCollected;
     bool    public presaleActive;
     bool    public tradingActive;
@@ -104,7 +105,7 @@ contract AlienMintToken is IERC20, Ownable {
         string memory name_,
         string memory symbol_,
         uint256 totalSupply_,
-        uint256 mintPerBNB_,
+        uint256 mintCostBNB_,
         uint256 fillBNB_,
         uint256 buyTax_,
         uint256 sellTax_,
@@ -119,7 +120,9 @@ contract AlienMintToken is IERC20, Ownable {
         require(buyTax_ <= MAX_TAX, "Buy tax too high");
         require(sellTax_ <= MAX_TAX, "Sell tax too high");
         require(marketingPct_ + burnPct_ + dividendPct_ + liquidityPct_ == 10000, "Tax alloc != 10000");
-        require(fillBNB_ >= 2 ether, "Fill min 2 BNB");
+        require(fillBNB_ > 0, "Fill must > 0");
+        require(mintCostBNB_ > 0, "Mint cost > 0");
+        require(fillBNB_ >= mintCostBNB_, "Fill < mint cost");
         require(marketingWallet_ != address(0), "Wallet zero");
 
         _name = name_;
@@ -127,8 +130,9 @@ contract AlienMintToken is IERC20, Ownable {
         _totalSupply = totalSupply_.mul(10 ** uint256(_decimals));
 
         _balances[address(this)] = _totalSupply;
-        mintAmountPerBNB = mintPerBNB_.mul(10 ** uint256(_decimals));
+        mintCostBNB = mintCostBNB_;                                          // wei 精度存储
         fillAmountBNB = fillBNB_;
+        tokensPerMint = _totalSupply.mul(mintCostBNB_).div(fillBNB_);       // 单次 Mint 代币数
         buyTaxBps = buyTax_;
         sellTaxBps = sellTax_;
         protectionEndBlock = block.number.add(protectionBlocks_);
@@ -187,10 +191,11 @@ contract AlienMintToken is IERC20, Ownable {
     // ===== Mint 预售 =====
     function mint() external payable {
         require(presaleActive, "Presale ended");
-        require(msg.value > 0, "BNB required");
+        require(msg.value >= mintCostBNB, "Below min mint");
         require(totalBNBCollected.add(msg.value) <= fillAmountBNB, "Hardcap reached");
 
-        uint256 tokens = msg.value.mul(mintAmountPerBNB).div(1 ether);
+        uint256 mintCount = msg.value.div(mintCostBNB);
+        uint256 tokens = mintCount.mul(tokensPerMint);
         require(_balances[address(this)] >= tokens, "No tokens left");
 
         _balances[address(this)] = _balances[address(this)].sub(tokens);

@@ -488,19 +488,24 @@
     <div class="form-row cols-3">
       <div class="form-group">
         <label class="form-label">代币总供应量 <span class="required">*必填</span></label>
-        <input type="number" id="total-supply" placeholder="纯数字" min="1" />
+        <input type="number" id="total-supply" placeholder="纯数字" min="1" oninput="updateMintCalc()" />
         <span class="form-hint">例：1000000000</span>
       </div>
       <div class="form-group">
-        <label class="form-label">每 BNB Mint 数量 <span class="required">*必填</span></label>
-        <input type="number" id="mint-amount" placeholder="纯数字" min="1" />
-        <span class="form-hint">每花 1 BNB 可 Mint 的代币数</span>
+        <label class="form-label">单次 Mint 费用 (BNB) <span class="required">*必填</span></label>
+        <input type="number" id="mint-amount" placeholder="0.01" min="0.0001" step="0.001" value="0.01" oninput="updateMintCalc()" />
+        <span class="form-hint">每次 Mint 花费的 BNB 数量</span>
       </div>
       <div class="form-group">
         <label class="form-label">预售硬顶 (BNB) <span class="required">*必填</span></label>
-        <input type="number" id="fill-amount" placeholder="纯数字，最低 2" min="2" step="0.1" />
-        <span class="form-hint">预售募集 BNB 总量，最低 2</span>
+        <input type="number" id="fill-amount" placeholder="任意金额" min="0.0001" step="0.1" value="2" oninput="updateMintCalc()" />
+        <span class="form-hint">预售募集 BNB 总量上限</span>
       </div>
+    </div>
+    <div id="mint-calc-info" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:.82rem;color:var(--text-muted)">
+      <span>📦 总 Mint 次数：<strong id="calc-mint-count" style="color:var(--accent1)">200</strong></span>
+      <span>🪙 每次 Mint 获得：<strong id="calc-tokens-per-mint" style="color:var(--accent1)">5,000,000</strong></span>
+      <span>💰 每代币单价：<strong id="calc-price-per-token" style="color:var(--accent1)">0.000000002 BNB</strong></span>
     </div>
 
     <!-- 合约地址尾号 -->
@@ -866,6 +871,28 @@ function updateProtect(el){
 
 /* ─── 税费分配 ─── */
 const allocKeys = ['fund','burn','div','liq'];
+
+/* ─── Mint 实时计算 ─── */
+function updateMintCalc(){
+  const supply = parseFloat(document.getElementById('total-supply').value) || 0;
+  const mintCost = parseFloat(document.getElementById('mint-amount').value) || 0;
+  const fillBNB = parseFloat(document.getElementById('fill-amount').value) || 0;
+  const elCount = document.getElementById('calc-mint-count');
+  const elTokens = document.getElementById('calc-tokens-per-mint');
+  const elPrice = document.getElementById('calc-price-per-token');
+  if(supply <= 0 || mintCost <= 0 || fillBNB <= 0){
+    elCount.textContent = '-';
+    elTokens.textContent = '-';
+    elPrice.textContent = '-';
+    return;
+  }
+  const mintCount = Math.floor(fillBNB / mintCost);
+  const tokensPerMint = supply / mintCount;
+  const pricePerToken = mintCost / tokensPerMint;
+  elCount.textContent = mintCount.toLocaleString();
+  elTokens.textContent = tokensPerMint < 1 ? tokensPerMint.toFixed(6) : Math.floor(tokensPerMint).toLocaleString();
+  elPrice.textContent = pricePerToken < 0.000001 ? pricePerToken.toExponential(2) + ' BNB' : pricePerToken.toFixed(8) + ' BNB';
+}
 function updateAlloc(el, key){
   const val = parseInt(el.value);
   document.getElementById(key+'-pct').textContent = val + '%';
@@ -894,8 +921,8 @@ function validate(){
   if(!name){ alert('请填写代币名称'); return false; }
   if(!sym)  { alert('请填写代币符号'); return false; }
   if(!sup || parseFloat(sup) <= 0){ alert('请填写有效的代币总供应量'); return false; }
-  if(!mint || parseFloat(mint) <= 0){ alert('请填写有效的单次 Mint 数量'); return false; }
-  if(!fill || parseFloat(fill) < 2){ alert('预售硬顶最低为 2 BNB'); return false; }
+  if(!mint || parseFloat(mint) <= 0){ alert('请填写有效的单次 Mint 费用'); return false; }
+  if(!fill || parseFloat(fill) <= 0){ alert('请填写有效的预售硬顶数量'); return false; }
   // 税费分配必须 = 100%
   let total = 0;
   allocKeys.forEach(k => {
@@ -927,8 +954,9 @@ function getFormParams(){
     name, symbol,
     // Solidity 构造函数内部会乘 10^18，所以这里传原始数字
     totalSupply: ethers.utils.parseUnits(supply, 0),
-    mintPerBNB: ethers.utils.parseUnits(mintAmt, 0),
-    // fillBNB 直接传 wei（Solidity 用 2 ether 比较）
+    // mintCostBNB 直接传 wei 精度（Solidity 原样存储）
+    mintCostBNB: ethers.utils.parseEther(mintAmt),
+    // fillBNB 直接传 wei 精度（Solidity 原样存储）
     fillBNB: ethers.utils.parseEther(fillAmt),
     buyTaxBps: Math.round(buyTax * 100),       // % -> bps
     sellTaxBps: Math.round(sellTax * 100),
@@ -1024,8 +1052,9 @@ function buildParamsPreview(p, vanityResult, gasBNB){
     ['代币名称', p.name],
     ['代币符号', p.symbol],
     ['总供应量', ethers.utils.formatUnits(p.totalSupply, 0)],
-    ['每 BNB Mint 数', ethers.utils.formatUnits(p.mintPerBNB, 0)],
+    ['单次 Mint 费用', ethers.utils.formatEther(p.mintCostBNB) + ' BNB'],
     ['预售硬顶', ethers.utils.formatEther(p.fillBNB) + ' BNB'],
+    ['总 Mint 次数', Math.floor(parseFloat(ethers.utils.formatEther(p.fillBNB)) / parseFloat(ethers.utils.formatEther(p.mintCostBNB))).toLocaleString()],
     ['买入税率', (p.buyTaxBps / 100) + '%'],
     ['卖出税率', (p.sellTaxBps / 100) + '%'],
     ['保护期', p.protectionBlocks + ' 区块 (~' + (p.protectionBlocks / 28800).toFixed(1) + '天)'],
@@ -1059,8 +1088,8 @@ async function launchToken(){
 
   console.log('=== 部署参数 ===');
   console.log('  名称:', p.name, '  符号:', p.symbol);
-  console.log('  总供应:', p.totalSupply.toString(), '  每1BNB mint:', p.mintPerBNB.toString());
-  console.log('  预售硬顶:', p.fillBNB.toString());
+  console.log('  总供应:', p.totalSupply.toString(), '  单次Mint费用:', ethers.utils.formatEther(p.mintCostBNB), 'BNB');
+  console.log('  预售硬顶:', ethers.utils.formatEther(p.fillBNB), 'BNB');
   console.log('  买税:', p.buyTaxBps, 'bps  卖税:', p.sellTaxBps, 'bps');
   console.log('  保护期:', p.protectionBlocks, 'blocks');
   console.log('  分配:', p.marketingBps, '/', p.burnBps, '/', p.dividendBps, '/', p.liquidityBps);
@@ -1106,7 +1135,7 @@ async function launchToken(){
     const tokenFactory = new ethers.ContractFactory(CONTRACT_ABI, CONTRACT_BYTECODE, signer);
     const deployTxData = tokenFactory.getDeployTransaction(
       p.name, p.symbol,
-      p.totalSupply, p.mintPerBNB, p.fillBNB,
+      p.totalSupply, p.mintCostBNB, p.fillBNB,
       p.buyTaxBps, p.sellTaxBps, p.protectionBlocks,
       p.marketingBps, p.burnBps, p.dividendBps, p.liquidityBps,
       p.marketingWallet, p.dividendToken
@@ -1281,7 +1310,11 @@ function getErrorMsg(e){
   if(e.message && e.message.includes('Tax alloc'))
     return '税费分配参数错误，请确保总和等于 100%。';
   if(e.message && e.message.includes('Fill min'))
-    return '打满数量必须 ≥ 2 BNB。';
+    return '预售硬顶必须大于 0。';
+  if(e.message && e.message.includes('Mint cost'))
+    return '单次 Mint 费用必须大于 0，且不能超过预售硬顶。';
+  if(e.message && e.message.includes('Below min'))
+    return '发送的 BNB 不足最低 Mint 费用要求。';
   if(e.message && e.message.includes('Wallet zero'))
     return '资金钱包地址不能为零地址。请填写有效的 BSC 地址。';
   if(e.message && e.message.includes('collision'))
@@ -1343,6 +1376,8 @@ document.querySelectorAll('input[type=range]').forEach(el => {
   const pct = ((parseFloat(el.value) - parseFloat(el.min)) / (parseFloat(el.max) - parseFloat(el.min))) * 100;
   el.style.setProperty('--pct', pct + '%');
 });
+/* 初始化 Mint 计算 */
+updateMintCalc();
 </script>
 </body>
 </html>
