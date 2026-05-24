@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>外星王 ALIEN MINT — 发射代币</title>
+  <title>莫大 ALIEN MINT — 发射代币</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -59,6 +59,7 @@
     }
     .logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
     .logo-icon { font-size:1.7rem; animation:float 4s ease-in-out infinite; }
+    .logo-icon-img { width: 32px; height: 32px; border-radius: 50%; animation: float 4s ease-in-out infinite; }
     @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
     .logo-text-en { font-size:.72rem; letter-spacing:3px; color:var(--accent1); display:block; line-height:1; }
     .logo-text-cn { font-size:1.05rem; color:var(--text-main); font-weight:800; display:block; line-height:1.3; }
@@ -419,7 +420,10 @@
       .form-row.cols-2, .form-row.cols-3, .tax-row { grid-template-columns:1fr; }
       .form-card { padding:20px 16px; }
       .chain-options { flex-direction:column; }
-      nav { gap:8px; }
+      nav { gap:8px; flex-wrap:wrap; height:auto; padding:10px 0; }
+      .logo-text-en { font-size:.6rem; }
+      .logo-text-cn { font-size:.85rem; }
+      .nav-right { gap:8px; }
       .wallet-banner { flex-direction:column; align-items:flex-start; }
     }
   </style>
@@ -457,10 +461,10 @@
 <header>
   <nav>
     <a class="logo" href="index.html">
-      <span class="logo-icon">👽</span>
+      <img src="logo.png" class="logo-icon-img" />
       <span>
         <span class="logo-text-en">ALIEN MINT</span>
-        <span class="logo-text-cn">外星王发射平台</span>
+        <span class="logo-text-cn">莫大发射平台</span>
       </span>
     </a>
     <div class="nav-right">
@@ -750,7 +754,7 @@
 <!-- ══ 弹窗：发射中 ══ -->
 <div class="modal-overlay" id="modal">
   <div class="modal">
-    <div class="modal-icon" id="modal-icon">🛸</div>
+    <div class="modal-icon" id="modal-icon">🚀</div>
     <h3 id="modal-title">代币发射中！</h3>
     <p id="modal-desc">请在 MetaMask 中确认交易...</p>
     <div class="modal-status" id="modal-status">
@@ -803,12 +807,14 @@
         <div class="verify-panel" id="vpanel-manual">
           <h4>📖 方式三：BSCScan 网页手动验证步骤</h4>
           <ol class="verify-steps">
-            <li>打开 BSCScan，搜索你的合约地址，进入合约页面</li>
-            <li>点击 <b>Contract</b> 标签，再点击 <b>Verify and Publish</b></li>
+            <li>点击下方 <b>"打开 BSCScan 验证页面"</b> 按钮</li>
+            <li>验证方式选择：<b>Solidity (Single part)</b></li>
             <li>编译器版本选择：<code>v0.8.20+commit.a1b79de6</code></li>
+            <li>开源许可证选择：<code>MIT License</code></li>
             <li>优化设置：<b>Yes</b>，运行次数：<b>200</b></li>
-            <li>勾选 <b>Enabled via IR</b>（重要！）</li>
-            <li>粘贴合约源码（单文件，可直接复制下方按钮下载）</li>
+            <li>勾选 <b>Enabled via IR</b>（⚠️ 必须勾选！）</li>
+            <li>合约名称填写：<code>AlienMintToken</code></li>
+            <li>粘贴合约源码（点击下方"下载合约源码"获取完整源码）</li>
             <li>构造函数参数（ABI 编码，不含 0x）：</li>
           </ol>
           <div class="verify-param-row">
@@ -821,7 +827,11 @@
           </div>
           <div class="verify-param-row">
             <span class="verify-param-label">Via-IR</span>
-            <span class="verify-param-value">Enabled</span>
+            <span class="verify-param-value" style="color:var(--danger);font-weight:700">必须启用！</span>
+          </div>
+          <div class="verify-param-row">
+            <span class="verify-param-label">EVM 版本</span>
+            <span class="verify-param-value">Paris（默认）</span>
           </div>
           <div class="verify-param-row">
             <span class="verify-param-label">合约名称</span>
@@ -831,10 +841,12 @@
             <span class="verify-param-label">构造函数参数 (ABI-encoded)</span>
             <span class="verify-param-value" id="manual-ctor-args" style="font-size:.7rem">（部署后显示）</span>
           </div>
-          <div style="margin-top:10px">
+          <div class="verify-btn-row">
+            <button class="verify-btn primary" onclick="openBscScanVerify()">🌐 打开 BSCScan 验证页面</button>
             <button class="verify-btn" onclick="copyCtorArgs()">📋 复制构造函数参数</button>
             <button class="verify-btn" onclick="downloadContractSrc()">📥 下载合约源码</button>
           </div>
+          <div class="verify-note">⚠️ 源码和合约 bytecode 必须使用同一编译器版本编译，否则验证会失败。本平台使用 solc v0.8.20+commit.a1b79de6 (via-IR, optimize 200) 编译。</div>
         </div>
       </div>
     </div>
@@ -849,7 +861,7 @@
 
 <script>
 /* ================================================================
-   外星王 ALIEN MINT — 真实 BSC 链合约部署
+   莫大 ALIEN MINT — 真实 BSC 链合约部署
    支持：MetaMask / TokenPocket
    ================================================================ */
 
@@ -1375,7 +1387,7 @@ async function launchToken(){
     });
 
     // ===== 阶段5：上链部署 =====
-    modalIcon.textContent = '🛸';
+    modalIcon.textContent = '🚀';
     modalTitle.textContent = '代币发射中！';
     statusText.textContent = '📱 请在钱包中确认交易...';
     modalSpinner.style.display = 'block';
@@ -1696,7 +1708,7 @@ async function downloadVerifyJson(){
   }
   try {
     var resp = await fetch('AlienMintToken.sol');
-    if(!resp.ok) throw new Error('\u65e0\u6cd5\u8bfb\u53d6 AlienMintToken.sol\uff0c\u8bf7\u786e\u4fdd\u8be5\u6587\u4ef6\u4e0e launch.html \u5728\u540c\u4e00\u76ee\u5f55');
+    if(!resp.ok) throw new Error('\u65e0\u6cd5\u8bfb\u53d6 AlienMintToken.sol\uff0c\u8bf7\u7861\u4fdd\u8be5\u6587\u4ef6\u4e0e launch.html \u5728\u540c\u4e00\u76ee\u5f55');
     var src = await resp.text();
     var standardJson = {
       language: 'Solidity',
@@ -1704,9 +1716,14 @@ async function downloadVerifyJson(){
         'AlienMintToken.sol': { content: src }
       },
       settings: {
+        evmVersion: 'paris',
         viaIR: true,
         optimizer: { enabled: true, runs: 200 },
-        outputSelection: { '*': { '*': ['*'] } }
+        outputSelection: {
+          '*': {
+            '*': ['evm.bytecode.object', 'evm.deployedBytecode.object', 'abi', 'devdoc', 'userdoc', 'metadata', 'storageLayout']
+          }
+        }
       }
     };
     var jsonStr = JSON.stringify(standardJson, null, 2);
@@ -1719,7 +1736,14 @@ async function downloadVerifyJson(){
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    alert('\u2705 \u9a8c\u8bc1\u5305\u5df2\u4e0b\u8f7d\uff01\n\n\u63a5\u4e0b\u6765\uff1a\n1. \u6253\u5f00 https://bscscan.com/verifyContract?a=' + _verifyContractAddr + '\n2. \u9009\u62e9 "Solidity (Standard Json Input)"\n3. \u4e0a\u4f20\u521a\u4e0b\u8f7d\u7684 JSON \u6587\u4ef6\n4. \u70b9\u51fb Verify and Publish');
+
+    var bscscanBase = isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com';
+    var verifyUrl = bscscanBase + '/verifyContract?a=' + _verifyContractAddr;
+
+    alert('\u2705 \u9a8c\u8bc1\u5305\u5df2\u4e0b\u8f7d\uff01\n\n\u63a5\u4e0b\u6765\u64cd\u4f5c\u6b65\u9aa4\uff1a\n\n1. \u6253\u5f00 BSCScan \u9a8c\u8bc1\u9875\u9762\n2. \u9a8c\u8bc1\u65b9\u5f0f\u9009\u62e9 "Solidity (Standard Json Input)"\n3. \u7f16\u8bd1\u5668\u7248\u672c\u9009\u62e9 "v0.8.20+commit.a1b79de6"\n4. \u5408\u7ea6\u540d\u79f0\u586b\u5199 "AlienMintToken"\n5. \u4e0a\u4f20\u521a\u624d\u4e0b\u8f7d\u7684 JSON \u6587\u4ef6\n6. \u70b9\u51fb "Verify and Publish"\n\n\u6ce8\u610f\uff1a\u7f16\u8bd1\u5668\u7248\u672c\u5fc5\u987b\u7cbe\u786e\u5339\u914d "v0.8.20+commit.a1b79de6"\uff0c\u5426\u5219\u4f1a\u5bfc\u81f4 bytecode \u4e0d\u5339\u914d\u3002');
+
+    // 自动打开验证页面
+    window.open(verifyUrl, '_blank');
   } catch(e) {
     alert('\u274c \u751f\u6210\u9a8c\u8bc1\u5305\u5931\u8d25\uff1a' + e.message);
     console.error(e);
@@ -1743,6 +1767,12 @@ async function downloadContractSrc(){
   } catch(e) {
     alert('\u274c \u4e0b\u8f7d\u5931\u8d25\uff1a' + e.message);
   }
+}
+
+function openBscScanVerify(){
+  var base = isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com';
+  var url = base + '/verifyContract?a=' + _verifyContractAddr;
+  window.open(url, '_blank');
 }
 
 </script>
