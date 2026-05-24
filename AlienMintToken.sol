@@ -41,11 +41,16 @@ library SafeMath {
 }
 
 contract Ownable {
-    address private _owner;
+    address internal _owner;
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     constructor() { _owner = msg.sender; emit OwnershipTransferred(address(0), msg.sender); }
     function owner() public view virtual returns (address) { return _owner; }
     modifier onlyOwner() { require(owner() == msg.sender, "Ownable: caller is not owner"); _; }
+    function transferOwnership(address newOwner) public virtual onlyOwner {
+        require(newOwner != address(0), "Ownable: zero address");
+        emit OwnershipTransferred(_owner, newOwner);
+        _owner = newOwner;
+    }
     function renounceOwnership() public virtual onlyOwner {
         emit OwnershipTransferred(_owner, address(0));
         _owner = address(0);
@@ -115,7 +120,8 @@ contract AlienMintToken is IERC20, Ownable {
         uint256 dividendPct_,
         uint256 liquidityPct_,
         address marketingWallet_,
-        address dividendToken_
+        address dividendToken_,
+        address owner_
     ) {
         require(buyTax_ <= MAX_TAX, "Buy tax too high");
         require(sellTax_ <= MAX_TAX, "Sell tax too high");
@@ -124,10 +130,17 @@ contract AlienMintToken is IERC20, Ownable {
         require(mintCostBNB_ > 0, "Mint cost > 0");
         require(fillBNB_ >= mintCostBNB_, "Fill < mint cost");
         require(marketingWallet_ != address(0), "Wallet zero");
+        require(owner_ != address(0), "Owner zero");
 
         _name = name_;
         _symbol = symbol_;
         _totalSupply = totalSupply_.mul(10 ** uint256(_decimals));
+
+        // 手动转移 ownership（CREATE2 工厂部署时 msg.sender 是工厂地址，不是用户）
+        require(owner_ != address(0), "Owner zero");
+        emit OwnershipTransferred(address(0), msg.sender); // Ownable constructor already set this
+        emit OwnershipTransferred(msg.sender, owner_);      // transfer to actual user
+        _owner = owner_;
 
         _balances[address(this)] = _totalSupply;
         mintCostBNB = mintCostBNB_;                                          // wei 精度存储
@@ -150,12 +163,12 @@ contract AlienMintToken is IERC20, Ownable {
         uniswapV2Pair = IUniswapV2Factory(_router.factory()).createPair(address(this), _router.WETH());
 
         isExcludedFromTax[address(this)] = true;
-        isExcludedFromTax[msg.sender] = true;
+        isExcludedFromTax[owner_] = true;
         isExcludedFromTax[marketingWallet_] = true;
         isExcludedFromTax[address(_router)] = true;
         isExcludedFromProtection[address(_router)] = true;
         isExcludedFromProtection[address(this)] = true;
-        isExcludedFromProtection[msg.sender] = true;
+        isExcludedFromProtection[owner_] = true;
 
         emit Transfer(address(0), address(this), _totalSupply);
     }
