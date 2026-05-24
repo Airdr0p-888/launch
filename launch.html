@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>外星王 ALIEN MINT — 发射代币</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-deep:    #f5f3ff;
+      --bg-card:    #ffffff;
+      --bg-input:   #f8f7fc;
+      --accent1:    #0d9488;
+      --accent2:    #7c3aed;
+      --accent3:    #d97706;
+      --danger:     #ef4444;
+      --success:    #16a34a;
+      --text-main:  #1e293b;
+      --text-muted: #64748b;
+      --border:     #e2e8f0;
+      --border-focus: rgba(13,148,136,.5);
+      --radius: 12px;
+      --font: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg-deep);
+      color: var(--text-main);
+      font-family: var(--font);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    body::before {
+      content:'';
+      position:fixed; inset:0;
+      background:
+        radial-gradient(ellipse 70% 45% at 15% 15%, rgba(124,58,237,.06) 0%, transparent 60%),
+        radial-gradient(ellipse 55% 40% at 85% 85%, rgba(13,148,136,.05) 0%, transparent 55%);
+      pointer-events:none; z-index:0;
+    }
+    .stars { position:fixed; inset:0; overflow:hidden; pointer-events:none; z-index:0; }
+    .star {
+      position:absolute; border-radius:50%; background:rgba(124,58,237,.2);
+      opacity:0; animation:twinkle var(--dur,3s) var(--delay,0s) infinite ease-in-out;
+    }
+    @keyframes twinkle {
+      0%,100%{opacity:0;transform:scale(.6)} 50%{opacity:var(--op,.7);transform:scale(1)}
+    }
+
+    /* ── 导航 ── */
+    header {
+      position:sticky; top:0; z-index:100;
+      background:rgba(245,243,255,.85); backdrop-filter:blur(16px);
+      border-bottom:1px solid var(--border);
+    }
+    nav {
+      max-width:1100px; margin:0 auto; padding:0 24px;
+      display:flex; align-items:center; justify-content:space-between; height:66px;
+    }
+    .logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+    .logo-icon { font-size:1.7rem; animation:float 4s ease-in-out infinite; }
+    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+    .logo-text-en { font-size:.72rem; letter-spacing:3px; color:var(--accent1); display:block; line-height:1; }
+    .logo-text-cn { font-size:1.05rem; color:var(--text-main); font-weight:800; display:block; line-height:1.3; }
+    .nav-right { display:flex; align-items:center; gap:12px; }
+    .btn {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:9px 20px; border-radius:50px; font-weight:700; font-size:.9rem;
+      cursor:pointer; text-decoration:none; border:none; transition:all .2s;
+    }
+    .btn-primary { background:linear-gradient(135deg,var(--accent1),var(--accent2)); color:#000; }
+    .btn-primary:hover { transform:translateY(-2px); box-shadow:0 0 24px rgba(0,255,200,.4); }
+    .btn-ghost { background:transparent; color:var(--text-main); border:1px solid var(--border); }
+    .btn-ghost:hover { border-color:var(--accent1); color:var(--accent1); }
+    .btn-outline-purple {
+      background:rgba(168,85,247,.12); color:var(--accent2);
+      border:1px solid rgba(168,85,247,.4);
+    }
+    .btn-outline-purple:hover { background:rgba(168,85,247,.22); }
+    .wallet-addr {
+      font-size:.82rem; color:var(--accent1); font-family:monospace;
+      background:rgba(13,148,136,.08); border:1px solid rgba(13,148,136,.2);
+      padding:5px 14px; border-radius:50px;
+    }
+
+    /* ── 页头 ── */
+    .page-hero {
+      text-align:center; padding:52px 24px 36px; position:relative; z-index:1;
+    }
+    .page-hero h1 { font-size:clamp(1.6rem,4vw,2.6rem); font-weight:900; margin-bottom:10px; }
+    .gradient-text {
+      background:linear-gradient(135deg,var(--accent1),var(--accent2));
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    }
+    .page-hero p { color:var(--text-muted); font-size:1rem; }
+
+    /* ── 步骤指示器 ── */
+    .steps-bar {
+      display:flex; align-items:center; justify-content:center; gap:0;
+      max-width:600px; margin:0 auto 40px; padding:0 24px; position:relative; z-index:1;
+    }
+    .step-item { display:flex; flex-direction:column; align-items:center; flex:1; }
+    .step-circle {
+      width:36px; height:36px; border-radius:50%;
+      border:2px solid var(--border); background:var(--bg-card);
+      display:flex; align-items:center; justify-content:center;
+      font-size:.82rem; font-weight:700; color:var(--text-muted);
+      transition:all .3s; position:relative; z-index:1;
+    }
+    .step-circle.active { border-color:var(--accent1); color:var(--accent1); box-shadow:0 0 12px rgba(13,148,136,.2); }
+    .step-circle.done { background:linear-gradient(135deg,var(--accent1),var(--accent2)); border-color:transparent; color:#000; }
+    .step-label { font-size:.75rem; color:var(--text-muted); margin-top:6px; white-space:nowrap; }
+    .step-label.active { color:var(--accent1); }
+    .step-line { flex:1; height:2px; background:var(--border); margin:0 4px; margin-bottom:22px; transition:background .3s; }
+    .step-line.done { background:linear-gradient(90deg,var(--accent1),var(--accent2)); }
+
+    /* ── 主容器 ── */
+    .main { max-width:800px; margin:0 auto; padding:0 24px 80px; position:relative; z-index:1; }
+
+    /* ── 钱包提示横幅 ── */
+    .wallet-banner {
+      background:rgba(124,58,237,.06); border:1px solid rgba(124,58,237,.2);
+      border-radius:var(--radius); padding:16px 20px; margin-bottom:28px;
+      display:flex; align-items:center; gap:12px;
+    }
+    .wallet-banner.hidden { display:none; }
+    .wallet-banner .warn-icon { font-size:1.4rem; flex-shrink:0; }
+    .wallet-banner p { font-size:.92rem; color:var(--text-muted); flex:1; }
+
+    /* ── 卡片分组 ── */
+    .form-card {
+      background:var(--bg-card); border:1px solid var(--border);
+      border-radius:16px; padding:28px 28px; margin-bottom:20px;
+      transition:border-color .2s;
+    }
+    .form-card:focus-within { border-color:rgba(13,148,136,.3); }
+    .card-header {
+      display:flex; align-items:center; gap:10px;
+      font-size:1.05rem; font-weight:800; margin-bottom:24px; color:var(--text-main);
+    }
+    .card-header-icon { font-size:1.3rem; }
+
+    /* ── 表单行 ── */
+    .form-row { display:grid; gap:18px; margin-bottom:18px; }
+    .form-row.cols-2 { grid-template-columns:1fr 1fr; }
+    .form-row.cols-3 { grid-template-columns:1fr 1fr 1fr; }
+    .form-group { display:flex; flex-direction:column; gap:6px; }
+    .form-label {
+      font-size:.85rem; font-weight:600; color:var(--text-main);
+      display:flex; align-items:center; gap:6px;
+    }
+    .required { color:var(--danger); font-size:.8rem; }
+    .form-hint { font-size:.78rem; color:var(--text-muted); margin-top:2px; }
+
+    input[type=text], input[type=number], input[type=url], textarea, select {
+      background:var(--bg-input); border:1px solid var(--border);
+      border-radius:9px; padding:11px 14px; color:var(--text-main);
+      font-size:.92rem; font-family:var(--font); width:100%;
+      transition:border-color .2s, box-shadow .2s; outline:none;
+    }
+    input[type=text]:focus, input[type=number]:focus,
+    input[type=url]:focus, textarea:focus, select:focus {
+      border-color:var(--border-focus); box-shadow:0 0 0 3px rgba(13,148,136,.08);
+    }
+    input::placeholder, textarea::placeholder { color:var(--text-muted); }
+    textarea { resize:vertical; min-height:88px; }
+    select option { background:#ffffff; }
+
+    /* 网络选项 */
+    .chain-options { display:flex; gap:12px; flex-wrap:wrap; }
+    .chain-opt {
+      flex:1; min-width:180px; padding:12px 16px;
+      border:2px solid var(--border); border-radius:10px;
+      background:var(--bg-input); cursor:pointer; transition:all .2s;
+      display:flex; align-items:center; gap:10px; position:relative;
+    }
+    .chain-opt.selected { border-color:var(--accent1); background:rgba(13,148,136,.06); }
+    .chain-opt.disabled { opacity:.45; cursor:not-allowed; }
+    .chain-dot { width:10px; height:10px; border-radius:50%; background:#f59e0b; flex-shrink:0; }
+    .chain-dot.eth { background:#627eea; }
+    .chain-name { font-weight:700; font-size:.9rem; }
+    .chain-badge {
+      font-size:.7rem; background:rgba(124,58,237,.12); color:var(--accent2);
+      padding:2px 8px; border-radius:50px; margin-left:auto;
+    }
+    .chain-check {
+      position:absolute; right:12px; top:12px;
+      width:18px; height:18px; border-radius:50%;
+      background:var(--accent1); color:#000; font-size:.72rem;
+      display:none; align-items:center; justify-content:center; font-weight:900;
+    }
+    .chain-opt.selected .chain-check { display:flex; }
+
+    /* 图片上传 */
+    .upload-zone {
+      border:2px dashed var(--border); border-radius:var(--radius);
+      padding:28px; text-align:center; cursor:pointer; transition:all .2s;
+      background:var(--bg-input); position:relative;
+    }
+    .upload-zone:hover { border-color:var(--accent1); background:rgba(13,148,136,.04); }
+    .upload-zone input[type=file] {
+      position:absolute; inset:0; opacity:0; cursor:pointer; width:100%;
+    }
+    .upload-icon { font-size:2rem; margin-bottom:8px; }
+    .upload-text { font-size:.88rem; color:var(--text-muted); }
+    .upload-sub  { font-size:.76rem; color:var(--text-muted); margin-top:4px; }
+    .upload-preview {
+      display:none; position:relative; width:80px; height:80px; margin:0 auto 8px;
+    }
+    .upload-preview img {
+      width:80px; height:80px; border-radius:50%; object-fit:cover; border:2px solid var(--accent1);
+    }
+
+    /* ── 税率滑块 ── */
+    .tax-row { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+    .slider-group { display:flex; flex-direction:column; gap:8px; }
+    .slider-label-row { display:flex; justify-content:space-between; }
+    .slider-label-row span:last-child {
+      font-weight:800; color:var(--accent1); font-size:.95rem;
+    }
+    input[type=range] {
+      -webkit-appearance:none; appearance:none;
+      width:100%; height:6px; border-radius:50px; outline:none; cursor:pointer;
+      background:linear-gradient(90deg, var(--accent1) var(--pct,10%), rgba(0,0,0,.08) var(--pct,10%));
+      border:none; padding:0;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
+      background:var(--accent1); border:2px solid #fff; cursor:pointer;
+      box-shadow:0 2px 8px rgba(13,148,136,.4);
+    }
+
+    /* ── 保护期 ── */
+    .protect-info {
+      background:rgba(124,58,237,.06); border:1px solid rgba(124,58,237,.15);
+      border-radius:9px; padding:12px 14px; font-size:.82rem; color:var(--text-muted);
+      line-height:1.7; margin-top:8px;
+    }
+
+    /* ── 税费分配 ── */
+    .alloc-warning {
+      display:flex; align-items:center; gap:8px;
+      background:rgba(217,119,6,.06); border:1px solid rgba(217,119,6,.2);
+      border-radius:9px; padding:10px 14px; font-size:.83rem; color:var(--accent3);
+      margin-bottom:18px;
+    }
+    .alloc-grid { display:flex; flex-direction:column; gap:14px; }
+    .alloc-item {
+      background:rgba(0,0,0,.02); border:1px solid var(--border);
+      border-radius:10px; padding:14px 16px;
+    }
+    .alloc-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+    .alloc-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .alloc-name { font-size:.9rem; font-weight:700; flex:1; }
+    .alloc-pct  { font-size:1rem; font-weight:900; color:var(--accent1); min-width:42px; text-align:right; }
+    .alloc-bar-wrap { height:5px; background:rgba(0,0,0,.06); border-radius:50px; overflow:hidden; margin-bottom:8px; }
+    .alloc-bar { height:100%; border-radius:50px; transition:width .2s; }
+    input.alloc-input {
+      width:100%; padding:8px 12px; font-size:.88rem;
+    }
+    .alloc-total-row {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-top:14px; padding:12px 16px;
+      background:rgba(0,0,0,.02); border-radius:10px; border:1px solid var(--border);
+    }
+    .alloc-total-label { font-size:.88rem; color:var(--text-muted); }
+    .alloc-total-val { font-size:1rem; font-weight:900; }
+    .alloc-total-val.ok    { color:var(--success); }
+    .alloc-total-val.error { color:var(--danger); }
+
+    /* ── 地址输入 ── */
+    .addr-row { margin-top:14px; }
+    .addr-row .form-group + .form-group { margin-top:12px; }
+
+    /* ── 可选链接 ── */
+    .link-grid { display:flex; flex-direction:column; gap:10px; }
+    .link-input-wrap { position:relative; display:flex; align-items:center; }
+    .link-icon {
+      position:absolute; left:12px; font-size:1rem; pointer-events:none;
+      width:24px; text-align:center;
+    }
+    .link-input-wrap input { padding-left:42px; }
+
+    /* ── 提交按钮 ── */
+    .submit-zone { text-align:center; margin-top:28px; }
+    .btn-launch {
+      width:100%; max-width:440px; padding:16px 36px;
+      font-size:1.1rem; border-radius:50px;
+      background:linear-gradient(135deg,var(--accent1),var(--accent2));
+      color:#000; font-weight:900; cursor:pointer; border:none;
+      transition:all .25s; box-shadow:0 4px 14px rgba(124,58,237,.15);
+      display:inline-flex; align-items:center; justify-content:center; gap:10px;
+    }
+    .btn-launch:hover:not(:disabled) {
+      transform:translateY(-3px); box-shadow:0 6px 24px rgba(124,58,237,.25);
+    }
+    .btn-launch:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+    .launch-hint { font-size:.82rem; color:var(--text-muted); margin-top:12px; }
+
+    /* ── 弹窗 ── */
+    .modal-overlay {
+      position:fixed; inset:0; background:rgba(0,0,0,.75); backdrop-filter:blur(6px);
+      z-index:999; display:none; align-items:center; justify-content:center; padding:20px;
+    }
+    .modal-overlay.show { display:flex; }
+    .modal {
+      background:var(--bg-card); border:1px solid var(--border);
+      border-radius:20px; padding:36px 32px; max-width:460px; width:100%;
+      text-align:center; position:relative; animation:modal-in .25s ease;
+    }
+    @keyframes modal-in { from{opacity:0;transform:scale(.92)} to{opacity:1;transform:scale(1)} }
+    .modal-icon { font-size:3.5rem; margin-bottom:16px; }
+    .modal h3 { font-size:1.4rem; font-weight:900; margin-bottom:10px; }
+    .modal p  { font-size:.92rem; color:var(--text-muted); margin-bottom:20px; }
+    .modal-status {
+      display:flex; align-items:center; justify-content:center; gap:8px;
+      font-size:.88rem; color:var(--text-muted); margin-bottom:24px;
+    }
+    .spinner {
+      width:16px; height:16px; border:2px solid rgba(0,0,0,.1);
+      border-top-color:var(--accent1); border-radius:50%;
+      animation:spin .7s linear infinite;
+    }
+    @keyframes spin { to{transform:rotate(360deg)} }
+    .contract-box {
+      background:var(--bg-input); border:1px solid var(--border); border-radius:9px;
+      padding:12px 14px; margin-bottom:16px; text-align:left; display:none;
+    }
+    .contract-label { font-size:.76rem; color:var(--text-muted); margin-bottom:4px; }
+    .contract-addr {
+      font-family:monospace; font-size:.82rem; color:var(--accent1);
+      word-break:break-all;
+    }
+    .modal-actions { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+    .btn-copy {
+      background:rgba(13,148,136,.08); border:1px solid rgba(13,148,136,.25);
+      color:var(--accent1); padding:9px 20px; border-radius:50px; cursor:pointer;
+      font-size:.88rem; font-weight:700; transition:all .2s;
+    }
+    .btn-copy:hover { background:rgba(13,148,136,.15); }
+    .btn-bscscan {
+      background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.2);
+      color:var(--accent2); padding:9px 20px; border-radius:50px; cursor:pointer;
+      font-size:.88rem; font-weight:700; text-decoration:none; transition:all .2s;
+    }
+    .btn-bscscan:hover { background:rgba(124,58,237,.15); }
+    .btn-close-modal {
+      background:rgba(0,0,0,.03); border:1px solid var(--border);
+      color:var(--text-muted); padding:9px 22px; border-radius:50px; cursor:pointer;
+      font-size:.88rem; transition:all .2s;
+    }
+    .btn-close-modal:hover { color:var(--text-main); border-color:var(--text-muted); }
+
+    /* ── 响应式 ── */
+    @media(max-width:640px) {
+      .form-row.cols-2, .form-row.cols-3, .tax-row { grid-template-columns:1fr; }
+      .form-card { padding:20px 16px; }
+      .chain-options { flex-direction:column; }
+      nav { gap:8px; }
+      .wallet-banner { flex-direction:column; align-items:flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- 星空 -->
+<div class="stars" id="stars"></div>
+
+<!-- ── 导航 ── -->
+<header>
+  <nav>
+    <a class="logo" href="index.html">
+      <span class="logo-icon">👽</span>
+      <span>
+        <span class="logo-text-en">ALIEN MINT</span>
+        <span class="logo-text-cn">外星王发射平台</span>
+      </span>
+    </a>
+    <div class="nav-right">
+      <span id="wallet-addr-display" class="wallet-addr" style="display:none"></span>
+      <button class="btn btn-outline-purple" id="btn-connect" onclick="connectWallet()">连接钱包 📡</button>
+      <button class="btn btn-ghost" onclick="alert('直播功能即将上线')">开通直播</button>
+    </div>
+  </nav>
+</header>
+
+<!-- ── 页头 ── -->
+<div class="page-hero">
+  <h1>🚀 <span class="gradient-text">发射你的代币</span></h1>
+  <p>填写以下信息，一键在 BNB 链上部署你的 Meme 代币合约</p>
+</div>
+
+<!-- ── 步骤 ── -->
+<div class="steps-bar" id="steps-bar">
+  <div class="step-item">
+    <div class="step-circle active" id="sc1">1</div>
+    <div class="step-label active" id="sl1">连接钱包</div>
+  </div>
+  <div class="step-line" id="line1"></div>
+  <div class="step-item">
+    <div class="step-circle" id="sc2">2</div>
+    <div class="step-label" id="sl2">填写参数</div>
+  </div>
+  <div class="step-line" id="line2"></div>
+  <div class="step-item">
+    <div class="step-circle" id="sc3">3</div>
+    <div class="step-label" id="sl3">确认交易</div>
+  </div>
+  <div class="step-line" id="line3"></div>
+  <div class="step-item">
+    <div class="step-circle" id="sc4">4</div>
+    <div class="step-label" id="sl4">获取合约</div>
+  </div>
+</div>
+
+<!-- ── 主体 ── -->
+<main class="main">
+
+  <!-- 钱包提示 -->
+  <div class="wallet-banner" id="wallet-banner">
+    <span class="warn-icon">⚠️</span>
+    <p>请先连接您的钱包，然后才能部署代币</p>
+    <button class="btn btn-outline-purple" style="flex-shrink:0" onclick="connectWallet()">连接钱包 📡</button>
+  </div>
+
+  <!-- ══ 卡片一：基本信息 ══ -->
+  <div class="form-card">
+    <div class="card-header"><span class="card-header-icon">📋</span> 基本信息</div>
+
+    <div class="form-row cols-2">
+      <div class="form-group">
+        <label class="form-label">代币名称 <span class="required">*必填</span></label>
+        <input type="text" id="token-name" placeholder="例如：Alien Meme Token" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">代币符号 <span class="required">*必填</span></label>
+        <input type="text" id="token-symbol" placeholder="例如：AMT" maxlength="10" />
+      </div>
+    </div>
+
+    <!-- 区块链网络 -->
+    <div class="form-group" style="margin-bottom:18px">
+      <label class="form-label">区块链网络</label>
+      <div class="chain-options">
+        <div class="chain-opt selected" id="chain-bnb" onclick="selectChain('bnb')">
+          <span class="chain-dot"></span>
+          <span class="chain-name">BNB Smart Chain (BSC)</span>
+          <div class="chain-check">✓</div>
+        </div>
+        <div class="chain-opt disabled" id="chain-eth" title="即将支持">
+          <span class="chain-dot eth"></span>
+          <span class="chain-name">以太坊 (ETH)</span>
+          <span class="chain-badge">即将支持</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 封面图片 -->
+    <div class="form-group" style="margin-bottom:18px">
+      <label class="form-label">封面图片</label>
+      <div class="upload-zone" id="upload-zone" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+        <input type="file" accept="image/*" onchange="handleImageUpload(event)" />
+        <div id="upload-default">
+          <div class="upload-icon">🖼️</div>
+          <div class="upload-text">点击或拖拽上传代币封面</div>
+          <div class="upload-sub">支持 PNG / JPG / GIF，建议 200×200px</div>
+        </div>
+        <div id="upload-preview-wrap" style="display:none">
+          <div class="upload-preview" id="img-preview">
+            <img id="preview-img" src="" alt="预览" />
+          </div>
+          <div class="upload-text" style="color:var(--accent1)">图片已上传 ✓</div>
+          <div class="upload-sub">点击更换图片</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 描述 -->
+    <div class="form-group" style="margin-bottom:18px">
+      <label class="form-label">代币描述</label>
+      <textarea id="token-desc" placeholder="描述你的代币愿景、社区故事或 Meme 概念..."></textarea>
+    </div>
+
+    <div class="form-row cols-3">
+      <div class="form-group">
+        <label class="form-label">代币总供应量 <span class="required">*必填</span></label>
+        <input type="number" id="total-supply" placeholder="纯数字" min="1" />
+        <span class="form-hint">例：1000000000</span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">单次 Mint 数量 <span class="required">*必填</span></label>
+        <input type="number" id="mint-amount" placeholder="纯数字" min="1" />
+        <span class="form-hint">每次可 Mint 的代币数</span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">打满数量 <span class="required">*必填</span></label>
+        <input type="number" id="fill-amount" placeholder="纯数字，最低 2" min="2" step="0.1" />
+        <span class="form-hint">单位 BNB，最低 2</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 卡片二：税费设置 ══ -->
+  <div class="form-card">
+    <div class="card-header"><span class="card-header-icon">⚙️</span> 代币税费设置</div>
+
+    <!-- 买卖税率 -->
+    <div class="tax-row" style="margin-bottom:22px">
+      <div class="slider-group">
+        <div class="slider-label-row">
+          <label class="form-label">买入税率</label>
+          <span id="buy-tax-val">1%</span>
+        </div>
+        <input type="range" id="buy-tax" min="0" max="10" value="1" step="0.5"
+          oninput="updateSlider(this,'buy-tax-val')" style="--pct:10%" />
+        <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--text-muted)">
+          <span>0%</span><span>10%</span>
+        </div>
+      </div>
+      <div class="slider-group">
+        <div class="slider-label-row">
+          <label class="form-label">卖出税率</label>
+          <span id="sell-tax-val">1%</span>
+        </div>
+        <input type="range" id="sell-tax" min="0" max="10" value="1" step="0.5"
+          oninput="updateSlider(this,'sell-tax-val')" style="--pct:10%" />
+        <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--text-muted)">
+          <span>0%</span><span>10%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 反套利保护期 -->
+    <div class="form-group" style="margin-bottom:22px">
+      <div class="slider-label-row" style="margin-bottom:8px">
+        <label class="form-label">🛡️ 反套利保护期</label>
+        <span id="protect-val" style="font-weight:800;color:var(--accent2);font-size:.95rem">3 天</span>
+      </div>
+      <input type="range" id="protect-days" min="0" max="365" value="3" step="1"
+        oninput="updateProtect(this)" style="--pct:0.82%" />
+      <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--text-muted);margin-top:4px">
+        <span>0 天</span><span>365 天</span>
+      </div>
+      <div class="protect-info">
+        在反套利保护期内，用户无法向部分 V3 池添加流动性。此功能确保交易主要在税收流动性池中进行，提高代币税收收入的稳定性。<br/>
+        <strong>最小：0 天 · 最大：365 天 · 默认：3 天</strong>
+      </div>
+    </div>
+
+    <!-- 税费分配 -->
+    <div class="card-header" style="font-size:.95rem;margin-bottom:16px">📊 税费分配</div>
+    <div class="alloc-warning">
+      <span>⚠️</span> 总分配必须等于 100%
+    </div>
+    <div class="alloc-grid">
+      <div class="alloc-item">
+        <div class="alloc-header">
+          <span class="alloc-dot" style="background:#facc15"></span>
+          <span class="alloc-name">🟡 资金钱包 <small style="color:var(--text-muted);font-weight:400">（营销 / 捐赠）</small></span>
+          <span class="alloc-pct" id="fund-pct">0%</span>
+        </div>
+        <div class="alloc-bar-wrap"><div class="alloc-bar" id="fund-bar" style="width:0%;background:#facc15"></div></div>
+        <input type="range" min="0" max="100" value="0" step="1" oninput="updateAlloc(this,'fund')" />
+      </div>
+      <div class="alloc-item">
+        <div class="alloc-header">
+          <span class="alloc-dot" style="background:#e2e8f0"></span>
+          <span class="alloc-name">⚪ 燃烧 <small style="color:var(--text-muted);font-weight:400">（减少供应）</small></span>
+          <span class="alloc-pct" id="burn-pct">0%</span>
+        </div>
+        <div class="alloc-bar-wrap"><div class="alloc-bar" id="burn-bar" style="width:0%;background:#e2e8f0"></div></div>
+        <input type="range" min="0" max="100" value="0" step="1" oninput="updateAlloc(this,'burn')" />
+      </div>
+      <div class="alloc-item">
+        <div class="alloc-header">
+          <span class="alloc-dot" style="background:#ef4444"></span>
+          <span class="alloc-name">🔴 分红 <small style="color:var(--text-muted);font-weight:400">（持有者奖励）</small></span>
+          <span class="alloc-pct" id="div-pct">0%</span>
+        </div>
+        <div class="alloc-bar-wrap"><div class="alloc-bar" id="div-bar" style="width:0%;background:#ef4444"></div></div>
+        <input type="range" min="0" max="100" value="0" step="1" oninput="updateAlloc(this,'div')" />
+      </div>
+      <div class="alloc-item">
+        <div class="alloc-header">
+          <span class="alloc-dot" style="background:#3b82f6"></span>
+          <span class="alloc-name">🔵 流动性 <small style="color:var(--text-muted);font-weight:400">（添加流动性）</small></span>
+          <span class="alloc-pct" id="liq-pct">0%</span>
+        </div>
+        <div class="alloc-bar-wrap"><div class="alloc-bar" id="liq-bar" style="width:0%;background:#3b82f6"></div></div>
+        <input type="range" min="0" max="100" value="0" step="1" oninput="updateAlloc(this,'liq')" />
+      </div>
+    </div>
+    <div class="alloc-total-row">
+      <span class="alloc-total-label">总计</span>
+      <span class="alloc-total-val" id="alloc-total">0%</span>
+      <span style="font-size:.82rem;color:var(--text-muted)" id="alloc-remain">未分配: 100%</span>
+    </div>
+
+    <!-- 关联地址 -->
+    <div class="addr-row">
+      <div class="form-group">
+        <label class="form-label">资金收款钱包地址</label>
+        <input type="text" id="fund-addr" placeholder="0x..." />
+        <span class="form-hint">税费中"资金钱包"部分将转入此地址</span>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">分红代币地址</label>
+        <input type="text" id="div-addr" placeholder="0x... （可选，留空默认分红 USDT）" />
+        <span class="form-hint">持有者将获得此代币分红，留空默认 USDT</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 卡片三：可选链接 ══ -->
+  <div class="form-card">
+    <div class="card-header"><span class="card-header-icon">🔗</span> 可选链接</div>
+    <div class="link-grid">
+      <div class="link-input-wrap">
+        <span class="link-icon">🌐</span>
+        <input type="url" placeholder="官网地址 https://..." />
+      </div>
+      <div class="link-input-wrap">
+        <span class="link-icon">𝕏</span>
+        <input type="url" placeholder="X (Twitter) 链接 https://x.com/..." />
+      </div>
+      <div class="link-input-wrap">
+        <span class="link-icon">✈️</span>
+        <input type="url" placeholder="Telegram 群链接 https://t.me/..." />
+      </div>
+      <div class="link-input-wrap">
+        <span class="link-icon">💬</span>
+        <input type="url" placeholder="Discord 链接 https://discord.gg/..." />
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 提交 ══ -->
+  <div class="submit-zone">
+    <button class="btn-launch" id="btn-launch" onclick="launchToken()" disabled>
+      🚀 立即发射代币
+    </button>
+    <p class="launch-hint" id="launch-hint">⚠️ 请先连接钱包才能发射代币</p>
+  </div>
+
+</main>
+
+<!-- ══ 弹窗：发射中 ══ -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-icon" id="modal-icon">🛸</div>
+    <h3 id="modal-title">代币发射中！</h3>
+    <p id="modal-desc">请在 MetaMask 中确认交易...</p>
+    <div class="modal-status" id="modal-status">
+      <div class="spinner" id="modal-spinner"></div>
+      <span id="modal-status-text">⏳ 等待钱包确认</span>
+    </div>
+    <div class="contract-box" id="contract-box">
+      <div class="contract-label">CONTRACT ADDRESS</div>
+      <div class="contract-addr" id="contract-addr"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-copy" id="btn-copy" onclick="copyContract()" style="display:none">📋 复制</button>
+      <a class="btn-bscscan" id="btn-bscscan" href="#" target="_blank" style="display:none">View on BscScan ↗</a>
+      <button class="btn-close-modal" onclick="closeModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ─── 星空 ─── */
+(function(){
+  const w=document.getElementById('stars');
+  for(let i=0;i<140;i++){
+    const s=document.createElement('div'); s.className='star';
+    const sz=Math.random()*2.5+.5;
+    s.style.cssText=[`width:${sz}px`,`height:${sz}px`,
+      `left:${Math.random()*100}%`,`top:${Math.random()*100}%`,
+      `--dur:${(Math.random()*4+2).toFixed(1)}s`,
+      `--delay:${(Math.random()*5).toFixed(1)}s`,
+      `--op:${(Math.random()*.6+.3).toFixed(2)}`].join(';');
+    w.appendChild(s);
+  }
+})();
+
+/* ─── 钱包连接 ─── */
+let walletConnected = false;
+async function connectWallet(){
+  if(typeof window.ethereum === 'undefined'){
+    alert('请先安装 MetaMask 钱包插件！');
+    window.open('https://metamask.io/download/','_blank'); return;
+  }
+  try {
+    const accounts = await window.ethereum.request({method:'eth_requestAccounts'});
+    const addr = accounts[0];
+    walletConnected = true;
+    document.getElementById('btn-connect').textContent = '已连接 ✓';
+    document.getElementById('btn-connect').style.background = 'rgba(34,197,94,.15)';
+    document.getElementById('btn-connect').style.borderColor = 'rgba(34,197,94,.4)';
+    document.getElementById('btn-connect').style.color = '#22c55e';
+    document.getElementById('wallet-addr-display').textContent = addr.slice(0,6)+'...'+addr.slice(-4);
+    document.getElementById('wallet-addr-display').style.display = 'inline';
+    document.getElementById('wallet-banner').classList.add('hidden');
+    document.getElementById('btn-launch').disabled = false;
+    document.getElementById('launch-hint').textContent = '请确保填写所有必填项后提交';
+    // 步骤更新
+    setStep(1,'done'); setStep(2,'active');
+    setLine(1,'done');
+  } catch(e){
+    console.warn(e);
+    alert('连接钱包失败：' + (e.message||e));
+  }
+}
+
+function setStep(n, state){
+  const c=document.getElementById('sc'+n), l=document.getElementById('sl'+n);
+  c.className='step-circle'; l.className='step-label';
+  if(state==='done'){ c.classList.add('done'); c.textContent='✓'; }
+  else if(state==='active'){ c.classList.add('active'); l.classList.add('active'); }
+}
+function setLine(n, state){
+  const line=document.getElementById('line'+n);
+  if(state==='done') line.classList.add('done');
+}
+
+/* ─── 链选择 ─── */
+function selectChain(id){
+  if(id==='eth') return;
+  document.querySelectorAll('.chain-opt:not(.disabled)').forEach(el=>{
+    el.classList.remove('selected');
+  });
+  document.getElementById('chain-'+id).classList.add('selected');
+}
+
+/* ─── 图片上传 ─── */
+function handleImageUpload(e){
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('preview-img').src = ev.target.result;
+    document.getElementById('upload-default').style.display='none';
+    document.getElementById('upload-preview-wrap').style.display='block';
+  };
+  reader.readAsDataURL(file);
+}
+function handleDrop(e){
+  e.preventDefault();
+  const file = e.dataTransfer.files[0]; if(!file||!file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('preview-img').src = ev.target.result;
+    document.getElementById('upload-default').style.display='none';
+    document.getElementById('upload-preview-wrap').style.display='block';
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ─── 滑块更新 ─── */
+function updateSlider(el, labelId){
+  const val = parseFloat(el.value);
+  document.getElementById(labelId).textContent = val + '%';
+  const pct = (val / parseFloat(el.max)) * 100;
+  el.style.setProperty('--pct', pct + '%');
+}
+
+function updateProtect(el){
+  const val = parseInt(el.value);
+  document.getElementById('protect-val').textContent = val + ' 天';
+  const pct = (val / 365) * 100;
+  el.style.setProperty('--pct', pct + '%');
+}
+
+/* ─── 税费分配 ─── */
+const allocKeys = ['fund','burn','div','liq'];
+function updateAlloc(el, key){
+  const val = parseInt(el.value);
+  const pct = (val/100)*100;
+  document.getElementById(key+'-pct').textContent = val + '%';
+  document.getElementById(key+'-bar').style.width = pct + '%';
+  el.style.setProperty('--pct', pct + '%');
+  // 计算总计
+  let total = 0;
+  allocKeys.forEach(k => {
+    const slider = el.closest('.alloc-grid').querySelector(`#${k}-pct`);
+    if(slider) total += parseInt(slider.textContent) || 0;
+  });
+  const totalEl = document.getElementById('alloc-total');
+  const remainEl = document.getElementById('alloc-remain');
+  totalEl.textContent = total + '%';
+  const remain = 100 - total;
+  remainEl.textContent = remain >= 0 ? `未分配: ${remain}%` : `超出: ${-remain}%`;
+  totalEl.className = 'alloc-total-val ' + (total === 100 ? 'ok' : (total > 100 ? 'error' : ''));
+}
+
+/* ─── 表单验证 ─── */
+function validate(){
+  const name = document.getElementById('token-name').value.trim();
+  const sym  = document.getElementById('token-symbol').value.trim();
+  const sup  = document.getElementById('total-supply').value;
+  const mint = document.getElementById('mint-amount').value;
+  const fill = document.getElementById('fill-amount').value;
+  if(!name){ alert('请填写代币名称'); return false; }
+  if(!sym)  { alert('请填写代币符号'); return false; }
+  if(!sup || parseFloat(sup) <= 0){ alert('请填写有效的代币总供应量'); return false; }
+  if(!mint || parseFloat(mint) <= 0){ alert('请填写有效的单次 Mint 数量'); return false; }
+  if(!fill || parseFloat(fill) < 2){ alert('打满数量最低为 2 BNB'); return false; }
+  return true;
+}
+
+/* ─── 发射代币 ─── */
+async function launchToken(){
+  if(!walletConnected){ alert('请先连接钱包！'); return; }
+  if(!validate()) return;
+  setStep(2,'done'); setStep(3,'active'); setLine(2,'done');
+  showModal();
+}
+
+function showModal(){
+  document.getElementById('modal').classList.add('show');
+  document.getElementById('modal-icon').textContent = '🛸';
+  document.getElementById('modal-title').textContent = '代币发射中！';
+  document.getElementById('modal-desc').textContent = '请在 MetaMask 中确认交易...';
+  document.getElementById('modal-status').style.display='flex';
+  document.getElementById('modal-spinner').style.display='block';
+  document.getElementById('modal-status-text').textContent = '⏳ 等待钱包确认';
+  document.getElementById('contract-box').style.display='none';
+  document.getElementById('btn-copy').style.display='none';
+  document.getElementById('btn-bscscan').style.display='none';
+  // 模拟交易流程（实际需接入合约 ABI）
+  setTimeout(()=>{
+    document.getElementById('modal-status-text').textContent = '⛓️ 交易已提交，等待链上确认...';
+  }, 2000);
+  setTimeout(()=>{
+    document.getElementById('modal-spinner').style.display='none';
+    document.getElementById('modal-icon').textContent = '🎉';
+    document.getElementById('modal-title').textContent = '发射成功！';
+    document.getElementById('modal-desc').textContent = '你的代币合约已成功部署到 BNB Chain！';
+    document.getElementById('modal-status-text').textContent = '✅ 合约部署完成';
+    const fakeAddr = '0x' + [...Array(40)].map(()=>'0123456789abcdef'[Math.floor(Math.random()*16)]).join('');
+    document.getElementById('contract-addr').textContent = fakeAddr;
+    document.getElementById('contract-box').style.display='block';
+    document.getElementById('btn-copy').style.display='inline-flex';
+    const scanBtn = document.getElementById('btn-bscscan');
+    scanBtn.href = 'https://bscscan.com/address/' + fakeAddr;
+    scanBtn.style.display='inline-flex';
+    setStep(3,'done'); setStep(4,'active'); setLine(3,'done');
+  }, 5000);
+}
+
+function closeModal(){
+  document.getElementById('modal').classList.remove('show');
+}
+
+function copyContract(){
+  const addr = document.getElementById('contract-addr').textContent;
+  navigator.clipboard.writeText(addr).then(()=>{
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = '✅ 已复制';
+    setTimeout(()=>{ btn.textContent='📋 复制'; }, 2000);
+  }).catch(()=> alert('复制失败，请手动复制'));
+}
+
+/* ─── 初始化滑块渐变色 ─── */
+document.querySelectorAll('input[type=range]').forEach(el => {
+  const pct = ((parseFloat(el.value) - parseFloat(el.min)) / (parseFloat(el.max) - parseFloat(el.min))) * 100;
+  el.style.setProperty('--pct', pct + '%');
+});
+</script>
+</body>
+</html>
