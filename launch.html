@@ -492,14 +492,14 @@
         <span class="form-hint">例：1000000000</span>
       </div>
       <div class="form-group">
-        <label class="form-label">单次 Mint 数量 <span class="required">*必填</span></label>
+        <label class="form-label">每 BNB Mint 数量 <span class="required">*必填</span></label>
         <input type="number" id="mint-amount" placeholder="纯数字" min="1" />
-        <span class="form-hint">每次可 Mint 的代币数</span>
+        <span class="form-hint">每花 1 BNB 可 Mint 的代币数</span>
       </div>
       <div class="form-group">
-        <label class="form-label">打满数量 <span class="required">*必填</span></label>
+        <label class="form-label">预售硬顶 (BNB) <span class="required">*必填</span></label>
         <input type="number" id="fill-amount" placeholder="纯数字，最低 2" min="2" step="0.1" />
-        <span class="form-hint">单位 BNB，最低 2</span>
+        <span class="form-hint">预售募集 BNB 总量，最低 2</span>
       </div>
     </div>
 
@@ -895,7 +895,7 @@ function validate(){
   if(!sym)  { alert('请填写代币符号'); return false; }
   if(!sup || parseFloat(sup) <= 0){ alert('请填写有效的代币总供应量'); return false; }
   if(!mint || parseFloat(mint) <= 0){ alert('请填写有效的单次 Mint 数量'); return false; }
-  if(!fill || parseFloat(fill) < 2){ alert('打满数量最低为 2 BNB'); return false; }
+  if(!fill || parseFloat(fill) < 2){ alert('预售硬顶最低为 2 BNB'); return false; }
   // 税费分配必须 = 100%
   let total = 0;
   allocKeys.forEach(k => {
@@ -951,42 +951,8 @@ function getFactoryKey(){ return 'alienmint_factory_' + (isTestnet ? '97' : '56'
 function saveFactory(addr){ localStorage.setItem(getFactoryKey(), addr); }
 function loadFactory(){ return localStorage.getItem(getFactoryKey()); }
 
-/* ─── Vanity 地址碰撞（纯 JS，不上链） ─── */
-function findVanitySalt(factoryAddr, initCode, suffix){
-  suffix = suffix.toLowerCase().replace(/[^0-9a-f]/g, '');
-  if(!suffix) return { salt: ethers.constants.HashZero, address: null, attempts: 0 };
-
-  const initCodeHash = ethers.utils.keccak256(initCode);
-  const suffixLen = suffix.length;
-  const maxAttempts = Math.pow(16, suffixLen) * 3; // 上限
-
-  console.log(`开始碰撞尾号 ${suffix}，initCode 长度: ${initCode.length} 字节`);
-  const startTime = Date.now();
-
-  for(let i = 0; i < maxAttempts; i++){
-    // 用 uint256 作为 salt
-    const saltBytes = ethers.utils.zeroPad(
-      ethers.utils.arrayify(ethers.BigNumber.from(i)),
-      32
-    );
-    const computed = ethers.utils.getCreate2Address(factoryAddr, saltBytes, initCodeHash);
-
-    if(computed.toLowerCase().slice(-suffixLen) === suffix){
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`✅ 碰撞成功！尝试 ${i+1} 次，耗时 ${elapsed}s，地址: ${computed}`);
-      return { salt: saltBytes, address: computed, attempts: i + 1 };
-    }
-
-    // 每 100000 次让出主线程，防止 UI 卡死
-    if(i % 100000 === 99999){
-      await new Promise(r => setTimeout(r, 0)); // eslint-disable-line
-    }
-  }
-
-  throw new Error(`碰撞失败：尝试了 ${maxAttempts} 次仍未找到尾号 ${suffix} 的地址。试试更短的尾号。`);
-}
-// 注意：findVanitySalt 内部用了 await，所以实际是 async
-findVanitySalt = async function(factoryAddr, initCode, suffix){
+/* ─── Vanity 地址碰撞（纯 JS，不上链，带进度回调） ─── */
+async function findVanitySalt(factoryAddr, initCode, suffix, onProgress){
   suffix = suffix.toLowerCase().replace(/[^0-9a-f]/g, '');
   if(!suffix) return { salt: ethers.constants.HashZero, address: null, attempts: 0 };
 
@@ -996,6 +962,7 @@ findVanitySalt = async function(factoryAddr, initCode, suffix){
 
   console.log('开始碰撞尾号 ' + suffix + '，概率 1/' + Math.pow(16, suffixLen));
   const startTime = Date.now();
+  let lastReport = 0;
 
   for(let i = 0; i < maxAttempts; i++){
     const saltBytes = ethers.utils.zeroPad(
@@ -1007,21 +974,29 @@ findVanitySalt = async function(factoryAddr, initCode, suffix){
     if(computed.toLowerCase().slice(-suffixLen) === suffix){
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
       console.log('碰撞成功！尝试 ' + (i+1) + ' 次，耗时 ' + elapsed + 's');
-      return { salt: saltBytes, address: computed, attempts: i + 1 };
+      return { salt: saltBytes, address: computed, attempts: i + 1, elapsed: elapsed };
+    }
+
+    // 每秒报告一次进度
+    if(onProgress && i % 50000 === 0){
+      const now = Date.now();
+      if(now - lastReport > 800){
+        lastReport = now;
+        const speed = (i / ((now - startTime) / 1000)).toFixed(0);
+        onProgress(i, maxAttempts, speed);
+      }
     }
     if(i % 200000 === 199999){
       await new Promise(r => setTimeout(r, 1));
     }
   }
   throw new Error('碰撞失败：尝试了 ' + maxAttempts + ' 次仍未找到尾号 ' + suffix);
-};
+}
 
 /* ─── 部署工厂合约（仅首次） ─── */
 async function ensureFactory(){
-  // 先查本地缓存
   const cached = loadFactory();
   if(cached){
-    // 验证地址有代码
     const code = await provider.getCode(cached);
     if(code !== '0x'){
       factoryAddress = cached;
@@ -1043,15 +1018,53 @@ async function ensureFactory(){
   console.log('工厂合约已部署:', factoryAddress);
 }
 
+/* ─── 构建参数预览 HTML ─── */
+function buildParamsPreview(p, vanityResult, gasBNB){
+  const rows = [
+    ['代币名称', p.name],
+    ['代币符号', p.symbol],
+    ['总供应量', ethers.utils.formatUnits(p.totalSupply, 0)],
+    ['每 BNB Mint 数', ethers.utils.formatUnits(p.mintPerBNB, 0)],
+    ['预售硬顶', ethers.utils.formatEther(p.fillBNB) + ' BNB'],
+    ['买入税率', (p.buyTaxBps / 100) + '%'],
+    ['卖出税率', (p.sellTaxBps / 100) + '%'],
+    ['保护期', p.protectionBlocks + ' 区块 (~' + (p.protectionBlocks / 28800).toFixed(1) + '天)'],
+    ['税费分配', '营销:' + (p.marketingBps/100) + '% 燃烧:' + (p.burnBps/100) + '% 分红:' + (p.dividendBps/100) + '% 流动性:' + (p.liquidityBps/100) + '%'],
+    ['资金钱包', p.marketingWallet],
+    ['分红代币', p.dividendToken === ethers.constants.AddressZero ? 'USDT (默认)' : p.dividendToken],
+  ];
+  if(vanityResult && vanityResult.address){
+    rows.unshift(['预期地址', '<span style="color:var(--accent1);font-family:monospace;font-size:.82rem">' + vanityResult.address + '</span>']);
+    rows.unshift(['碰撞尝试', vanityResult.attempts + ' 次 (' + vanityResult.elapsed + 's)']);
+  }
+  if(gasBNB) rows.push(['预估 Gas', gasBNB + ' BNB']);
+
+  let html = '<div style="text-align:left;background:var(--bg-input);border:1px solid var(--border);border-radius:9px;padding:14px 16px;margin:12px 0;max-height:280px;overflow-y:auto;font-size:.82rem">';
+  html += '<table style="width:100%;border-collapse:collapse">';
+  rows.forEach(([k, v]) => {
+    html += '<tr><td style="padding:4px 8px 4px 0;color:var(--text-muted);white-space:nowrap;font-weight:600">' + k + '</td><td style="padding:4px 0;word-break:break-all">' + v + '</td></tr>';
+  });
+  html += '</table></div>';
+  return html;
+}
+
 /* ─── 主流程 ─── */
 async function launchToken(){
   if(!walletConnected){ alert('请先连接钱包！'); return; }
   if(!validate()) return;
   setStep(2,'done'); setStep(3,'active'); setLine(2,'done');
-  await deployWithFactory();
-}
 
-async function deployWithFactory(){
+  const p = getFormParams();
+  const vanitySuffix = (document.getElementById('vanity-suffix').value || '').trim();
+
+  console.log('=== 部署参数 ===');
+  console.log('  名称:', p.name, '  符号:', p.symbol);
+  console.log('  总供应:', p.totalSupply.toString(), '  每1BNB mint:', p.mintPerBNB.toString());
+  console.log('  预售硬顶:', p.fillBNB.toString());
+  console.log('  买税:', p.buyTaxBps, 'bps  卖税:', p.sellTaxBps, 'bps');
+  console.log('  保护期:', p.protectionBlocks, 'blocks');
+  console.log('  分配:', p.marketingBps, '/', p.burnBps, '/', p.dividendBps, '/', p.liquidityBps);
+
   const modal = document.getElementById('modal');
   const modalIcon = document.getElementById('modal-icon');
   const modalTitle = document.getElementById('modal-title');
@@ -1062,46 +1075,34 @@ async function deployWithFactory(){
   const contractBox = document.getElementById('contract-box');
   const btnCopy = document.getElementById('btn-copy');
   const btnBsc = document.getElementById('btn-bscscan');
+  const actionsDiv = document.querySelector('.modal-actions');
 
   modal.classList.add('show');
   setModalClosable(false);
-  modalIcon.textContent = '🛸';
-  modalTitle.textContent = '正在准备部署...';
-  modalDesc.textContent = '正在初始化...';
-  modalStatus.style.display = 'flex';
-  modalSpinner.style.display = 'block';
-  statusText.textContent = '⏳ 初始化中';
   contractBox.style.display = 'none';
   btnCopy.style.display = 'none';
   btnBsc.style.display = 'none';
+
+  // 清理之前可能残留的确认按钮
+  const oldConfirm = document.getElementById('btn-confirm-deploy');
+  if(oldConfirm) oldConfirm.remove();
 
   let deployTxHash = '';
   const explorerBase = isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com';
 
   try {
-    const p = getFormParams();
-    const vanitySuffix = (document.getElementById('vanity-suffix').value || '').trim();
-
-    console.log('=== 部署参数 ===');
-    console.log('  名称:', p.name, '  符号:', p.symbol);
-    console.log('  总供应:', p.totalSupply.toString());
-    console.log('  每BNB mint:', p.mintPerBNB.toString());
-    console.log('  打满BNB:', p.fillBNB.toString());
-    console.log('  买税:', p.buyTaxBps, 'bps  卖税:', p.sellTaxBps, 'bps');
-    console.log('  保护期:', p.protectionBlocks, 'blocks');
-    console.log('  分配:', p.marketingBps, '/', p.burnBps, '/', p.dividendBps, '/', p.liquidityBps);
-    console.log('  资金钱包:', p.marketingWallet);
-    console.log('  分红代币:', p.dividendToken);
-    console.log('  尾号:', vanitySuffix || '随机');
-
-    // 1) 确保工厂存在
-    statusText.textContent = '🏭 检查/部署工厂合约...';
-    modalDesc.textContent = '首次使用需要部署一次工厂合约（约 0.005 BNB）...';
+    // ===== 阶段1：准备工厂 =====
+    modalIcon.textContent = '🏭';
+    modalTitle.textContent = '正在准备部署...';
+    modalDesc.textContent = '检查/部署工厂合约...';
+    modalStatus.style.display = 'flex';
+    modalSpinner.style.display = 'block';
+    statusText.textContent = '⏳ 初始化中';
     await ensureFactory();
-    modalDesc.textContent = '工厂就绪: ' + factoryAddress;
 
-    // 2) 构建 initCode（bytecode + ABI 编码的构造函数参数）
+    // ===== 阶段2：构建 initCode =====
     statusText.textContent = '🔧 构建合约数据...';
+    modalDesc.textContent = '正在编码部署参数...';
     const tokenFactory = new ethers.ContractFactory(CONTRACT_ABI, CONTRACT_BYTECODE, signer);
     const deployTxData = tokenFactory.getDeployTransaction(
       p.name, p.symbol,
@@ -1113,42 +1114,70 @@ async function deployWithFactory(){
     const initCode = deployTxData.data;
     console.log('initCode 长度:', initCode.length, 'bytes');
 
-    // 3) Vanity 地址碰撞
+    // ===== 阶段3：Vanity 碰撞（带进度） =====
+    let vanityResult = null;
     if(vanitySuffix){
-      statusText.textContent = '🔢 碰撞尾号 ' + vanitySuffix + '...';
-      modalDesc.textContent = '正在本地计算匹配尾号的 salt（纯 CPU，不上链）...';
-      const result = await findVanitySalt(factoryAddress, initCode, vanitySuffix);
-      modalDesc.innerHTML = `✅ 碰撞成功！尝试 <strong>${result.attempts}</strong> 次<br/>预期地址: <code style="font-size:.82rem;color:var(--accent1)">${result.address}</code>`;
+      modalIcon.textContent = '🔢';
+      modalTitle.textContent = '正在碰撞尾号...';
+      modalDesc.innerHTML = '<div id="vanity-progress" style="font-size:.85rem;color:var(--text-muted)">尾号: <strong>' + vanitySuffix + '</strong> | 尝试: <span id="vp-attempts">0</span> | 速度: <span id="vp-speed">-</span> 次/秒</div>';
+      statusText.textContent = '⏳ 本地碰撞中（不上链）...';
 
-      // 4a) 通过工厂部署（vanity 模式）
-      statusText.textContent = '📊 估算 Gas...';
-      const gasEst = await factoryContract.estimateGas.deploy(result.salt, initCode);
-      const gasPrice = await signer.getGasPrice();
-      const gasBNB = ethers.utils.formatEther(gasEst.mul(gasPrice));
+      vanityResult = await findVanitySalt(factoryAddress, initCode, vanitySuffix, function(current, max, speed){
+        const el = document.getElementById('vp-attempts');
+        const spd = document.getElementById('vp-speed');
+        if(el) el.textContent = current.toLocaleString();
+        if(spd) spd.textContent = speed;
+      });
 
-      modalDesc.innerHTML = `预期地址: <code style="font-size:.82rem;color:var(--accent1)">${result.address}</code><br/>Gas 预估: <strong>${parseFloat(gasBNB).toFixed(5)} BNB</strong>`;
-      statusText.textContent = '📱 请在钱包中确认交易...';
-      modalTitle.textContent = '代币发射中！';
-
-      const tx = await factoryContract.deploy(result.salt, initCode);
-      deployTxHash = tx.hash;
-
-    } else {
-      // 4b) 通过工厂部署（随机模式，salt = 0）
-      statusText.textContent = '📊 估算 Gas...';
-      const gasEst = await factoryContract.estimateGas.deploy(ethers.constants.HashZero, initCode);
-      const gasPrice = await signer.getGasPrice();
-      const gasBNB = ethers.utils.formatEther(gasEst.mul(gasPrice));
-
-      modalDesc.innerHTML = `Gas 预估: <strong>${parseFloat(gasBNB).toFixed(5)} BNB</strong>`;
-      statusText.textContent = '📱 请在钱包中确认交易...';
-      modalTitle.textContent = '代币发射中！';
-
-      const tx = await factoryContract.deploy(ethers.constants.HashZero, initCode);
-      deployTxHash = tx.hash;
+      modalDesc.innerHTML = '<div style="color:var(--success);font-weight:700">✅ 碰撞成功！尝试 ' + vanityResult.attempts + ' 次，耗时 ' + vanityResult.elapsed + 's</div>';
     }
 
-    // 5) 等待上链确认
+    // ===== 阶段4：估算 Gas + 参数确认 =====
+    statusText.textContent = '📊 估算 Gas...';
+    const salt = vanityResult ? vanityResult.salt : ethers.constants.HashZero;
+    const gasEst = await factoryContract.estimateGas.deploy(salt, initCode);
+    const gasPrice = await signer.getGasPrice();
+    const gasBNB = ethers.utils.formatEther(gasEst.mul(gasPrice));
+    const gasStr = parseFloat(gasBNB).toFixed(5);
+
+    // 显示参数预览
+    modalIcon.textContent = '📋';
+    modalTitle.textContent = '确认部署参数';
+    modalDesc.innerHTML = buildParamsPreview(p, vanityResult, gasStr);
+    modalDesc.innerHTML += '<div style="font-size:.85rem;color:var(--accent3);margin-top:4px">请仔细核对以上参数，确认无误后点击下方按钮部署</div>';
+    statusText.textContent = '⏳ 等待确认部署...';
+    modalSpinner.style.display = 'none';
+
+    // 插入确认部署按钮
+    const confirmBtn = document.createElement('button');
+    confirmBtn.id = 'btn-confirm-deploy';
+    confirmBtn.className = 'btn-launch';
+    confirmBtn.style.cssText = 'width:auto;margin-top:16px;padding:14px 36px;font-size:1rem';
+    confirmBtn.textContent = '🚀 确认部署上链';
+    actionsDiv.insertBefore(confirmBtn, actionsDiv.firstChild);
+
+    // 等待用户点击确认（或关闭弹窗取消）
+    await new Promise(function(resolve, reject){
+      confirmBtn.onclick = function(){
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = '⏳ 交易提交中...';
+        resolve();
+      };
+      // 如果弹窗被关闭则取消
+      modal._rejectOnClose = reject;
+    });
+
+    // ===== 阶段5：上链部署 =====
+    modalIcon.textContent = '🛸';
+    modalTitle.textContent = '代币发射中！';
+    statusText.textContent = '📱 请在钱包中确认交易...';
+    modalSpinner.style.display = 'block';
+    modalDesc.innerHTML = '请在 MetaMask 中确认交易...';
+
+    const tx = await factoryContract.deploy(salt, initCode);
+    deployTxHash = tx.hash;
+
+    // ===== 阶段6：等待确认 =====
     const txExplorer = explorerBase + '/tx/' + deployTxHash;
     statusText.innerHTML = '⏳ 交易已提交，等待确认...<br/><a href="' + txExplorer + '" target="_blank" style="color:var(--accent2);font-size:.8rem">查看交易 ↗</a>';
     modalDesc.innerHTML = 'TX: <code style="font-size:.78rem;color:var(--accent1);word-break:break-all">' + deployTxHash + '</code>';
@@ -1159,7 +1188,7 @@ async function deployWithFactory(){
       throw new Error('交易已上链但执行失败（revert），合约未部署。可能是参数错误。');
     }
 
-    // 6) 从 receipt 事件中获取合约地址
+    // ===== 阶段7：解析合约地址 =====
     const iface = new ethers.utils.Interface(FACTORY_ABI);
     let contractAddr = null;
     if(receipt.logs && receipt.logs.length > 0){
@@ -1173,9 +1202,7 @@ async function deployWithFactory(){
         } catch(e){ /* skip non-factory logs */ }
       }
     }
-
     if(!contractAddr){
-      // fallback: 从事件签名解析
       const topic = iface.getEventTopic('TokenDeployed');
       for(const log of receipt.logs){
         if(log.topics && log.topics[0] === topic){
@@ -1184,12 +1211,11 @@ async function deployWithFactory(){
         }
       }
     }
-
     if(!contractAddr){
       throw new Error('无法从交易中解析合约地址。请检查 BscScan 交易详情。');
     }
 
-    // 7) 成功！
+    // ===== 成功！ =====
     modalSpinner.style.display = 'none';
     modalIcon.textContent = '🎉';
     modalTitle.textContent = '发射成功！';
@@ -1203,7 +1229,6 @@ async function deployWithFactory(){
     btnBsc.style.display = 'inline-flex';
     btnBsc.textContent = 'View on BscScan ↗';
 
-    const actionsDiv = document.querySelector('.modal-actions');
     let txLinkEl = document.getElementById('tx-link');
     if(!txLinkEl){
       txLinkEl = document.createElement('a');
@@ -1223,6 +1248,12 @@ async function deployWithFactory(){
 
   } catch(e){
     console.error('部署失败:', e);
+    // 如果是用户关闭弹窗导致的取消
+    if(e.message === 'USER_CANCELLED'){
+      closeModal();
+      setStep(2,'done'); setStep(3,'active'); setLine(2,'done');
+      return;
+    }
     modalSpinner.style.display = 'none';
     modalIcon.textContent = '❌';
     modalTitle.textContent = '部署失败';
@@ -1268,16 +1299,25 @@ function setModalClosable(allowed){
     btn.textContent = '关闭';
     btn.onclick = closeModal;
   } else {
-    btn.disabled = true;
-    btn.style.opacity = '.4';
-    btn.style.cursor = 'not-allowed';
-    btn.textContent = '⏳ 等待确认中...';
-    btn.onclick = function(){ alert('部署正在进行中，请勿关闭！'); };
+    btn.disabled = false; // 仍然允许关闭（取消操作）
+    btn.style.opacity = '.7';
+    btn.style.cursor = 'pointer';
+    btn.textContent = '取消';
+    btn.onclick = closeModal;
   }
 }
 function closeModal(){
-  document.getElementById('modal').classList.remove('show');
+  const modal = document.getElementById('modal');
+  modal.classList.remove('show');
   setModalClosable(true);
+  // 如果有等待中的确认操作，触发取消
+  if(modal._rejectOnClose){
+    modal._rejectOnClose(new Error('USER_CANCELLED'));
+    modal._rejectOnClose = null;
+  }
+  // 清理确认按钮
+  const confirmBtn = document.getElementById('btn-confirm-deploy');
+  if(confirmBtn) confirmBtn.remove();
 }
 
 function copyContract(){
