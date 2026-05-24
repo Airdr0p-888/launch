@@ -986,7 +986,7 @@ async function findVanitySalt(factoryAddr, initCode, suffix, onProgress){
 
   const initCodeHash = ethers.utils.keccak256(initCode);
   const suffixLen = suffix.length;
-  const maxAttempts = Math.pow(16, suffixLen) * 3;
+  const maxAttempts = Math.pow(16, suffixLen) * 10;
 
   console.log('开始碰撞尾号 ' + suffix + '，概率 1/' + Math.pow(16, suffixLen));
   const startTime = Date.now();
