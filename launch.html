@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>莫大 ALIEN MINT — 发射代币</title>
+  <title>莫大 MODA MINT — 发射代币</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -463,7 +463,7 @@
     <a class="logo" href="index.html">
       <img src="logo.png" class="logo-icon-img" />
       <span>
-        <span class="logo-text-en">ALIEN MINT</span>
+        <span class="logo-text-en">MODA MINT</span>
         <span class="logo-text-cn">莫大发射平台</span>
       </span>
     </a>
@@ -521,7 +521,7 @@
     <div class="form-row cols-2">
       <div class="form-group">
         <label class="form-label">代币名称 <span class="required">*必填</span></label>
-        <input type="text" id="token-name" placeholder="例如：Alien Meme Token" />
+        <input type="text" id="token-name" placeholder="例如：Moda Meme Token" />
       </div>
       <div class="form-group">
         <label class="form-label">代币符号 <span class="required">*必填</span></label>
@@ -813,7 +813,7 @@
             <li>开源许可证选择：<code>MIT License</code></li>
             <li>优化设置：<b>Yes</b>，运行次数：<b>200</b></li>
             <li>勾选 <b>Enabled via IR</b>（⚠️ 必须勾选！）</li>
-            <li>合约名称填写：<code>AlienMintToken</code></li>
+            <li>合约名称填写：<code>ModaMintToken</code></li>
             <li>粘贴合约源码（点击下方"下载合约源码"获取完整源码）</li>
             <li>构造函数参数（ABI 编码，不含 0x）：</li>
           </ol>
@@ -835,7 +835,7 @@
           </div>
           <div class="verify-param-row">
             <span class="verify-param-label">合约名称</span>
-            <span class="verify-param-value">AlienMintToken</span>
+            <span class="verify-param-value">ModaMintToken</span>
           </div>
           <div class="verify-param-row">
             <span class="verify-param-label">构造函数参数 (ABI-encoded)</span>
@@ -861,7 +861,7 @@
 
 <script>
 /* ================================================================
-   莫大 ALIEN MINT — 真实 BSC 链合约部署
+   莫大 MODA MINT — 真实 BSC 链合约部署
    支持：MetaMask / TokenPocket
    ================================================================ */
 
@@ -1148,7 +1148,7 @@ function getFormParams(){
    ================================================================ */
 
 /* ─── 本地存储工厂地址 ─── */
-function getFactoryKey(){ return 'alienmint_factory_' + (isTestnet ? '97' : '56'); }
+function getFactoryKey(){ return 'modamint_factory_' + (isTestnet ? '97' : '56'); }
 function saveFactory(addr){ localStorage.setItem(getFactoryKey(), addr); }
 function loadFactory(){ return localStorage.getItem(getFactoryKey()); }
 
@@ -1646,7 +1646,7 @@ function buildForgeCommand(){
   if(!el) return;
   var addr = _verifyContractAddr || '<\u5408\u7ea6\u5730\u5740>';
   var ctorHex = _verifyCtorArgsHex ? _verifyCtorArgsHex.replace(/^0x/,'') : '';
-  var cmd = '# \u5728\u5305\u542b AlienMintToken.sol \u7684\u76ee\u5f55\u6267\u884c\uff1a\n';
+  var cmd = '# \u5728\u5305\u542b ModaMintToken.sol \u7684\u76ee\u5f55\u6267\u884c\uff1a\n';
   cmd += 'forge verify-contract \\\n';
   cmd += '  --chain bsc \\\n';
   cmd += '  --watch \\\n';
@@ -1657,7 +1657,7 @@ function buildForgeCommand(){
     cmd += '  --constructor-args ' + ctorHex + ' \\\n';
   }
   cmd += '  ' + addr + ' \\\n';
-  cmd += '  src/AlienMintToken.sol:AlienMintToken\n';
+  cmd += '  src/ModaMintToken.sol:ModaMintToken\n';
   el.textContent = cmd;
 }
 
@@ -1676,7 +1676,7 @@ async function copyCtorForVerify(){
 
 async function copyVerifyParams(){
   var params = [
-    '\u5408\u7ea6\u540d\u79f0: AlienMintToken',
+    '\u5408\u7ea6\u540d\u79f0: ModaMintToken',
     '\u7f16\u8bd1\u5668: v0.8.20+commit.a1b79de6',
     '\u4f18\u5316: Yes, 200 runs',
     'Via-IR: Enabled',
@@ -1707,13 +1707,13 @@ async function downloadVerifyJson(){
     return;
   }
   try {
-    var resp = await fetch('AlienMintToken.sol');
-    if(!resp.ok) throw new Error('\u65e0\u6cd5\u8bfb\u53d6 AlienMintToken.sol\uff0c\u8bf7\u7861\u4fdd\u8be5\u6587\u4ef6\u4e0e launch.html \u5728\u540c\u4e00\u76ee\u5f55');
+    var resp = await fetch('ModaMintToken.sol');
+    if(!resp.ok) throw new Error('\u65e0\u6cd5\u8bfb\u53d6 ModaMintToken.sol\uff0c\u8bf7\u7861\u4fdd\u8be5\u6587\u4ef6\u4e0e launch.html \u5728\u540c\u4e00\u76ee\u5f55');
     var src = await resp.text();
     var standardJson = {
       language: 'Solidity',
       sources: {
-        'AlienMintToken.sol': { content: src }
+        'ModaMintToken.sol': { content: src }
       },
       settings: {
         evmVersion: 'paris',
@@ -1740,7 +1740,7 @@ async function downloadVerifyJson(){
     var bscscanBase = isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com';
     var verifyUrl = bscscanBase + '/verifyContract?a=' + _verifyContractAddr;
 
-    alert('\u2705 \u9a8c\u8bc1\u5305\u5df2\u4e0b\u8f7d\uff01\n\n\u63a5\u4e0b\u6765\u64cd\u4f5c\u6b65\u9aa4\uff1a\n\n1. \u6253\u5f00 BSCScan \u9a8c\u8bc1\u9875\u9762\n2. \u9a8c\u8bc1\u65b9\u5f0f\u9009\u62e9 "Solidity (Standard Json Input)"\n3. \u7f16\u8bd1\u5668\u7248\u672c\u9009\u62e9 "v0.8.20+commit.a1b79de6"\n4. \u5408\u7ea6\u540d\u79f0\u586b\u5199 "AlienMintToken"\n5. \u4e0a\u4f20\u521a\u624d\u4e0b\u8f7d\u7684 JSON \u6587\u4ef6\n6. \u70b9\u51fb "Verify and Publish"\n\n\u6ce8\u610f\uff1a\u7f16\u8bd1\u5668\u7248\u672c\u5fc5\u987b\u7cbe\u786e\u5339\u914d "v0.8.20+commit.a1b79de6"\uff0c\u5426\u5219\u4f1a\u5bfc\u81f4 bytecode \u4e0d\u5339\u914d\u3002');
+    alert('\u2705 \u9a8c\u8bc1\u5305\u5df2\u4e0b\u8f7d\uff01\n\n\u63a5\u4e0b\u6765\u64cd\u4f5c\u6b65\u9aa4\uff1a\n\n1. \u6253\u5f00 BSCScan \u9a8c\u8bc1\u9875\u9762\n2. \u9a8c\u8bc1\u65b9\u5f0f\u9009\u62e9 "Solidity (Standard Json Input)"\n3. \u7f16\u8bd1\u5668\u7248\u672c\u9009\u62e9 "v0.8.20+commit.a1b79de6"\n4. \u5408\u7ea6\u540d\u79f0\u586b\u5199 "ModaMintToken"\n5. \u4e0a\u4f20\u521a\u624d\u4e0b\u8f7d\u7684 JSON \u6587\u4ef6\n6. \u70b9\u51fb "Verify and Publish"\n\n\u6ce8\u610f\uff1a\u7f16\u8bd1\u5668\u7248\u672c\u5fc5\u987b\u7cbe\u786e\u5339\u914d "v0.8.20+commit.a1b79de6"\uff0c\u5426\u5219\u4f1a\u5bfc\u81f4 bytecode \u4e0d\u5339\u914d\u3002');
 
     // 自动打开验证页面
     window.open(verifyUrl, '_blank');
@@ -1752,14 +1752,14 @@ async function downloadVerifyJson(){
 
 async function downloadContractSrc(){
   try {
-    var resp = await fetch('AlienMintToken.sol');
-    if(!resp.ok) throw new Error('\u65e0\u6cd5\u8bfb\u53d6 AlienMintToken.sol');
+    var resp = await fetch('ModaMintToken.sol');
+    if(!resp.ok) throw new Error('\u65e0\u6cd5\u8bfb\u53d6 ModaMintToken.sol');
     var src = await resp.text();
     var blob = new Blob([src], { type: 'text/plain' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'AlienMintToken.sol';
+    a.download = 'ModaMintToken.sol';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
