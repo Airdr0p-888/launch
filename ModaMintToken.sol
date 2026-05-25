@@ -106,6 +106,9 @@ contract ModaMintToken is IERC20, Ownable {
     event PresaleCompleted(uint256 totalBNB, uint256 totalTokens);
     event TradingEnabled();
 
+    // 预售代币分配比例（构造函数参数）
+    uint256 public presaleTokenPct;  // e.g. 50 = 50% 给预售，50% 留作 LP
+
     constructor(
         string memory name_,
         string memory symbol_,
@@ -121,6 +124,7 @@ contract ModaMintToken is IERC20, Ownable {
         uint256 liquidityPct_,
         address marketingWallet_,
         address dividendToken_,
+        uint256 presaleTokenPct_,  // 预售分配比例 (1-100)
         address owner_
     ) {
         require(buyTax_ <= MAX_TAX, "Buy tax too high");
@@ -131,13 +135,13 @@ contract ModaMintToken is IERC20, Ownable {
         require(fillBNB_ >= mintCostBNB_, "Fill < mint cost");
         require(marketingWallet_ != address(0), "Wallet zero");
         require(owner_ != address(0), "Owner zero");
+        require(presaleTokenPct_ >= 1 && presaleTokenPct_ <= 99, "Presale pct 1-99");
 
         _name = name_;
         _symbol = symbol_;
         _totalSupply = totalSupply_.mul(10 ** uint256(_decimals));
 
         // 手动转移 ownership（CREATE2 工厂部署时 msg.sender 是工厂地址，不是用户）
-        require(owner_ != address(0), "Owner zero");
         emit OwnershipTransferred(address(0), msg.sender); // Ownable constructor already set this
         emit OwnershipTransferred(msg.sender, owner_);      // transfer to actual user
         _owner = owner_;
@@ -145,7 +149,13 @@ contract ModaMintToken is IERC20, Ownable {
         _balances[address(this)] = _totalSupply;
         mintCostBNB = mintCostBNB_;                                          // wei 精度存储
         fillAmountBNB = fillBNB_;
-        tokensPerMint = _totalSupply.mul(mintCostBNB_).div(fillBNB_);       // 单次 Mint 代币数
+        presaleTokenPct = presaleTokenPct_;
+
+        // tokensPerMint 基于 presaleTokenPct% 的代币量，而非全部 totalSupply
+        // 剩余代币 (100 - presaleTokenPct)% 留在合约中用于自动添加底池
+        uint256 presaleTokens = _totalSupply.mul(presaleTokenPct_).div(100);
+        tokensPerMint = presaleTokens.mul(mintCostBNB_).div(fillBNB_);       // 单次 Mint 代币数
+
         buyTaxBps = buyTax_;
         sellTaxBps = sellTax_;
         protectionEndBlock = block.number.add(protectionBlocks_);
@@ -242,17 +252,30 @@ contract ModaMintToken is IERC20, Ownable {
 
     function _completePresale() internal {
         presaleActive = false;
-        tradingActive = true;
         uint256 tokenBal = _balances[address(this)];
         uint256 bnbBal = address(this).balance;
+        emit PresaleCompleted(bnbBal, tokenBal);
+
         if (tokenBal > 0 && bnbBal > 0) {
             _approve(address(this), address(uniswapV2Router), tokenBal);
-            uniswapV2Router.addLiquidityETH{value: bnbBal}(
-                address(this), tokenBal, 0, 0, msg.sender, block.timestamp
-            );
+            // ✅ Fix1: LP Token 归还给 _owner，而非 msg.sender（最后 mint 的用户）
+            // ✅ Fix2: try-catch 防止 Router 调用失败导致整笔 mint 被 revert，
+            //         失败时 tradingActive 保持 false，owner 可事后手动调用 addLiquidityManually()
+            try uniswapV2Router.addLiquidityETH{value: bnbBal}(
+                address(this), tokenBal, 0, 0, _owner, block.timestamp
+            ) {
+                // 底池添加成功，开启交易
+                tradingActive = true;
+                emit TradingEnabled();
+            } catch {
+                // 底池添加失败（极少见），保留资产在合约中，owner 手动处理
+                // tradingActive 仍为 false，交易暂未开启
+            }
+        } else {
+            // 没有代币或 BNB 可添加底池，直接开启交易
+            tradingActive = true;
+            emit TradingEnabled();
         }
-        emit PresaleCompleted(bnbBal, tokenBal);
-        emit TradingEnabled();
     }
 
     function enableTrading() external onlyOwner {
@@ -266,6 +289,16 @@ contract ModaMintToken is IERC20, Ownable {
         require(from != address(0) && to != address(0), "Zero address");
         require(amount > 0, "Amount zero");
         require(_balances[from] >= amount, "Insufficient balance");
+
+        // ✅ Fix3: 交易未开启时，禁止通过 DEX（Pair）买卖；
+        //         合约自身（addLiquidity/税费分配）、owner、router 豁免此限制
+        bool isDexTransfer = (from == uniswapV2Pair || to == uniswapV2Pair);
+        if (isDexTransfer && !tradingActive) {
+            require(
+                isExcludedFromTax[from] || isExcludedFromTax[to],
+                "Trading not active"
+            );
+        }
 
         // 合约自身转出代币（税费分配、addLiquidity 等）跳过反机器人保护
         if (from != address(this)) {
@@ -334,11 +367,16 @@ contract ModaMintToken is IERC20, Ownable {
     function withdrawBNB() external onlyOwner { payable(owner()).transfer(address(this).balance); }
     function addLiquidityManually() external onlyOwner {
         uint256 t = _balances[address(this)];
-        if (t > 0) {
-            _approve(address(this), address(uniswapV2Router), t);
-            uniswapV2Router.addLiquidityETH{value: address(this).balance}(
-                address(this), t, 0, 0, owner(), block.timestamp
-            );
+        uint256 b = address(this).balance;
+        require(t > 0 && b > 0, "Nothing to add");
+        _approve(address(this), address(uniswapV2Router), t);
+        uniswapV2Router.addLiquidityETH{value: b}(
+            address(this), t, 0, 0, owner(), block.timestamp
+        );
+        // ✅ 手动添加底池后，若交易仍未开启则打开
+        if (!tradingActive) {
+            tradingActive = true;
+            emit TradingEnabled();
         }
     }
 

@@ -567,6 +567,14 @@
         <input type="number" id="fill-amount" placeholder="任意金额" min="0.0001" step="0.1" value="2" oninput="updateMintCalc()" />
         <span class="form-hint">预售募集 BNB 总量上限</span>
       </div>
+      <div class="form-group">
+        <label class="form-label">预售代币比例 (%) <span class="required">*必填</span></label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input type="number" id="presale-pct" placeholder="50" min="1" max="99" step="1" value="50" oninput="updateMintCalc()" style="flex:1" />
+          <span style="font-size:.82rem;color:var(--text-muted);white-space:nowrap">剩余 <strong id="lp-pct-display" style="color:var(--accent2)">50</strong>% 自动做 LP</span>
+        </div>
+        <span class="form-hint">分配给预售 Mint 的代币比例，剩余比例留作初始流动性池</span>
+      </div>
     </div>
     <div id="mint-calc-info" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:.82rem;color:var(--text-muted)">
       <span>📦 总 Mint 次数：<strong id="calc-mint-count" style="color:var(--accent1)">200</strong></span>
@@ -1069,9 +1077,12 @@ function updateMintCalc(){
   const supply = parseFloat(document.getElementById('total-supply').value) || 0;
   const mintCost = parseFloat(document.getElementById('mint-amount').value) || 0;
   const fillBNB = parseFloat(document.getElementById('fill-amount').value) || 0;
+  const presalePct = parseInt(document.getElementById('presale-pct').value) || 50;
   const elCount = document.getElementById('calc-mint-count');
   const elTokens = document.getElementById('calc-tokens-per-mint');
   const elPrice = document.getElementById('calc-price-per-token');
+  const elLpPct = document.getElementById('lp-pct-display');
+  if(elLpPct) elLpPct.textContent = 100 - presalePct;
   if(supply <= 0 || mintCost <= 0 || fillBNB <= 0){
     elCount.textContent = '-';
     elTokens.textContent = '-';
@@ -1079,7 +1090,9 @@ function updateMintCalc(){
     return;
   }
   const mintCount = Math.floor(fillBNB / mintCost);
-  const tokensPerMint = supply / mintCount;
+  // tokensPerMint 基于预售比例的代币量，与 Solidity 计算一致
+  const presaleTokens = supply * presalePct / 100;
+  const tokensPerMint = presaleTokens / mintCount;
   const pricePerToken = mintCost / tokensPerMint;
   elCount.textContent = mintCount.toLocaleString();
   elTokens.textContent = tokensPerMint < 1 ? tokensPerMint.toFixed(6) : Math.floor(tokensPerMint).toLocaleString();
@@ -1141,6 +1154,7 @@ function getFormParams(){
   const liqPct  = parseInt(document.getElementById('liq-pct').textContent)||0;
   const fundAddr = document.getElementById('fund-addr').value.trim();
   const divAddr  = document.getElementById('div-addr').value.trim();
+  const presalePct = parseInt(document.getElementById('presale-pct').value) || 50;  // 默认50%
 
   return {
     name, symbol,
@@ -1158,7 +1172,8 @@ function getFormParams(){
     dividendBps: divPct * 100,
     liquidityBps: liqPct * 100,
     marketingWallet: fundAddr || currentAccount,
-    dividendToken: divAddr || ethers.constants.AddressZero
+    dividendToken: divAddr || ethers.constants.AddressZero,
+    presaleTokenPct: presalePct  // 预售代币分配比例 (1-99)，剩余比例自动留作 LP
   };
 }
 
@@ -1253,6 +1268,7 @@ function buildParamsPreview(p, vanityResult, gasBNB){
     ['税费分配', '营销:' + (p.marketingBps/100) + '% 燃烧:' + (p.burnBps/100) + '% 分红:' + (p.dividendBps/100) + '% 流动性:' + (p.liquidityBps/100) + '%'],
     ['资金钱包', p.marketingWallet],
     ['分红代币', p.dividendToken === ethers.constants.AddressZero ? 'USDT (默认)' : p.dividendToken],
+    ['预售代币比例', p.presaleTokenPct + '% (LP: ' + (100 - p.presaleTokenPct) + '%)'],
   ];
   if(vanityResult && vanityResult.address){
     rows.unshift(['预期地址', '<span style="color:var(--accent1);font-family:monospace;font-size:.82rem">' + vanityResult.address + '</span>']);
@@ -1330,8 +1346,9 @@ async function launchToken(){
       p.totalSupply, p.mintCostBNB, p.fillBNB,
       p.buyTaxBps, p.sellTaxBps, p.protectionBlocks,
       p.marketingBps, p.burnBps, p.dividendBps, p.liquidityBps,
-      p.marketingWallet, p.dividendToken,
-      await signer.getAddress()  // owner_ = 用户钱包（CREATE2 工厂部署时 msg.sender 是工厂地址）
+    p.marketingWallet, p.dividendToken,
+    p.presaleTokenPct,  // 预售代币分配比例 (1-99)
+    await signer.getAddress()  // owner_ = 用户钱包（CREATE2 工厂部署时 msg.sender 是工厂地址）
     );
     const initCode = deployTxData.data;
     // 提取构造函数参数 = initCode - bytecode（去掉前面的 bytecode 部分就是构造函数参数编码）
