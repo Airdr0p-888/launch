@@ -158,7 +158,7 @@ contract ModaMintToken is IERC20, Ownable {
 
         buyTaxBps = buyTax_;
         sellTaxBps = sellTax_;
-        protectionEndBlock = block.number.add(protectionBlocks_);
+        protectionEndBlock = block.number; // 保护期 0 个区块，mint 打满后立即可交易
         marketingBps = marketingPct_;
         burnBps = burnPct_;
         dividendBps = dividendPct_;
