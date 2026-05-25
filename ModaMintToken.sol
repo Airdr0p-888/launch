@@ -258,21 +258,19 @@ contract ModaMintToken is IERC20, Ownable {
 
         if (tokenBal > 0 && bnbBal > 0) {
             _approve(address(this), address(uniswapV2Router), tokenBal);
-            // ✅ Fix1: LP Token 归还给 _owner，而非 msg.sender（最后 mint 的用户）
-            // ✅ Fix2: try-catch 防止 Router 调用失败导致整笔 mint 被 revert，
-            //         失败时 tradingActive 保持 false，owner 可事后手动调用 addLiquidityManually()
+            // LP Token 收款人：_owner（项目方钱包），而非 msg.sender（末位 mint 用户）
+            // try-catch：防止 Router 调用异常导致整笔 mint tx 被 revert
+            //   - 成功：tradingActive = true，交易自动开启
+            //   - 失败：资产保留在合约，owner 可调用 addLiquidityManually() 手动补救
             try uniswapV2Router.addLiquidityETH{value: bnbBal}(
                 address(this), tokenBal, 0, 0, _owner, block.timestamp
-            ) {
-                // 底池添加成功，开启交易
+            ) returns (uint, uint, uint) {
                 tradingActive = true;
                 emit TradingEnabled();
             } catch {
-                // 底池添加失败（极少见），保留资产在合约中，owner 手动处理
-                // tradingActive 仍为 false，交易暂未开启
+                // 底池添加失败，tradingActive 保持 false，待 owner 手动处理
             }
         } else {
-            // 没有代币或 BNB 可添加底池，直接开启交易
             tradingActive = true;
             emit TradingEnabled();
         }
@@ -365,6 +363,17 @@ contract ModaMintToken is IERC20, Ownable {
     function excludeFromTax(address a, bool ex) external onlyOwner { isExcludedFromTax[a] = ex; }
     function excludeFromProtection(address a, bool ex) external onlyOwner { isExcludedFromProtection[a] = ex; }
     function withdrawBNB() external onlyOwner { payable(owner()).transfer(address(this).balance); }
+
+    /// @notice 立即关闭反机器人保护，或设置新的保护结束区块
+    function setProtectionEndBlock(uint256 blockNumber) external onlyOwner {
+        protectionEndBlock = blockNumber;
+    }
+
+    /// @notice 手动开关交易（比 enableTrading 更灵活，可开可关）
+    function setTradingActive(bool active) external onlyOwner {
+        tradingActive = active;
+        if (active) emit TradingEnabled();
+    }
     function addLiquidityManually() external onlyOwner {
         uint256 t = _balances[address(this)];
         uint256 b = address(this).balance;
