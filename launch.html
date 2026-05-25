@@ -788,6 +788,70 @@
         <div class="verify-note">⚠️ 本合约使用 via-IR 编译，必须用 <b>Standard Json Input</b> 方式验证。Single Part 不支持 via-IR。</div>
       </div>
     </div>
+    <!-- ===== 管理已有合约 入口 ===== -->
+    <div style="margin-top:14px;text-align:center">
+      <button onclick="openAdminPanelByAddress()" style="background:rgba(124,58,237,.15);color:var(--accent2);border:1px solid rgba(124,58,237,.35);padding:9px 22px;border-radius:8px;cursor:pointer;font-size:.83rem;font-weight:600">
+        🛡️ 管理已有合约（输入合约地址）
+      </button>
+    </div>
+    <!-- ===== 管理员控制面板 ===== -->
+    <div id="admin-panel" style="display:none;margin-top:18px;border:1px solid rgba(124,58,237,.35);border-radius:12px;overflow:hidden">
+      <div style="background:rgba(124,58,237,.12);padding:12px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="toggleAdminPanel()">
+        <span style="font-weight:700;color:var(--accent2);font-size:.92rem">🛡️ 管理员控制面板（仅 Owner 可用）</span>
+        <span id="admin-toggle-icon" style="color:var(--text-muted);font-size:.85rem">▼</span>
+      </div>
+      <div id="admin-panel-body" style="padding:16px;display:block">
+        <!-- 合约状态 -->
+        <div style="margin-bottom:14px">
+          <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px;font-weight:600">📊 合约状态</div>
+          <div id="admin-status-box" style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px;font-size:.8rem;line-height:1.9;color:var(--text-body)">
+            <span style="color:var(--text-muted)">点击下方按钮刷新状态...</span>
+          </div>
+          <button onclick="adminRefreshStatus()" style="margin-top:8px;background:rgba(124,58,237,.2);color:var(--accent2);border:1px solid rgba(124,58,237,.4);padding:6px 18px;border-radius:6px;cursor:pointer;font-size:.8rem">🔄 刷新状态</button>
+        </div>
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:12px 0"/>
+        <!-- BNB 提取 -->
+        <div style="margin-bottom:14px">
+          <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:6px;font-weight:600">💰 提取 BNB</div>
+          <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:8px">将合约中所有 BNB 转入 Owner 钱包（仅 Owner 可调用）</div>
+          <button onclick="adminWithdrawBNB()" style="background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:.88rem;cursor:pointer;font-weight:600">
+            💸 withdrawBNB（提取全部 BNB 到 Owner）
+          </button>
+        </div>
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:12px 0"/>
+        <!-- 预售管理 -->
+        <div style="margin-bottom:14px">
+          <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:6px;font-weight:600">🏁 预售管理</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button onclick="adminCompletePresale()" style="background:linear-gradient(135deg,#0d9488,#065f46);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:.85rem;cursor:pointer;font-weight:600">
+              ✅ 手动结束预售（并注入流动性）
+            </button>
+            <button onclick="adminEnableTrading()" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:.85rem;cursor:pointer;font-weight:600">
+              🔓 开启交易
+            </button>
+          </div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:6px">⚠️ 手动结束预售会将合约内所有 BNB + 代币注入 Uniswap 流动性</div>
+        </div>
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:12px 0"/>
+        <!-- 税费设置 -->
+        <div style="margin-bottom:6px">
+          <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px;font-weight:600">⚙️ 税费调整</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+            <span style="font-size:.8rem;color:var(--text-muted)">买入税 (bps):</span>
+            <input id="admin-buy-tax" type="number" min="0" max="2500" placeholder="500" style="width:90px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:5px 10px;color:var(--text-body);font-size:.82rem"/>
+            <button onclick="adminSetBuyTax()" style="background:rgba(37,99,235,.3);color:#93c5fd;border:1px solid rgba(37,99,235,.4);padding:6px 16px;border-radius:6px;cursor:pointer;font-size:.8rem">设置买入税</button>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:.8rem;color:var(--text-muted)">卖出税 (bps):</span>
+            <input id="admin-sell-tax" type="number" min="0" max="2500" placeholder="500" style="width:90px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:5px 10px;color:var(--text-body);font-size:.82rem"/>
+            <button onclick="adminSetSellTax()" style="background:rgba(37,99,235,.3);color:#93c5fd;border:1px solid rgba(37,99,235,.4);padding:6px 16px;border-radius:6px;cursor:pointer;font-size:.8rem">设置卖出税</button>
+          </div>
+        </div>
+        <!-- 操作日志 -->
+        <div id="admin-log" style="display:none;margin-top:12px;background:rgba(0,0,0,.25);border-radius:8px;padding:10px;font-size:.78rem;color:var(--text-muted);max-height:120px;overflow-y:auto;line-height:1.7"></div>
+      </div>
+    </div>
+
 
     <div class="modal-actions">
       <button class="btn-copy" id="btn-copy" onclick="copyContract()" style="display:none">📋 复制</button>
@@ -1406,6 +1470,10 @@ async function launchToken(){
     if(typeof showVerifySection === 'function'){
       showVerifySection(contractAddr, ctorArgsHex);
     }
+    // 初始化管理员面板
+    if(typeof initAdminPanel === 'function'){
+      initAdminPanel(contractAddr);
+    }
 
   } catch(e){
     console.error('部署失败:', e);
@@ -1698,11 +1766,185 @@ async function downloadContractSrc(){
   }
 }
 
-function openBscScanVerify(){
+ function openBscScanVerify(){
   var base = isTestnet ? 'https://testnet.bscscan.com' : 'https://bscscan.com';
   var url = base + '/verifyContract?a=' + _verifyContractAddr;
   window.open(url, '_blank');
 }
+
+/* ─────────────────────────────────────────
+   管理员控制面板
+   ───────────────────────────────────────── */
+
+// 当前管理的合约地址
+let _adminContractAddr = '';
+let _adminContract = null;
+
+// 从已部署合约初始化管理员面板
+function initAdminPanel(contractAddr) {
+  _adminContractAddr = contractAddr;
+  if (!contractAddr) return;
+  try {
+    _adminContract = new ethers.Contract(contractAddr, CONTRACT_ABI, signer);
+    document.getElementById('admin-panel').style.display = 'block';
+    adminRefreshStatus();
+  } catch(e) {
+    console.error('admin panel init error:', e);
+  }
+}
+
+function toggleAdminPanel() {
+  const body = document.getElementById('admin-panel-body');
+  const icon = document.getElementById('admin-toggle-icon');
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    icon.textContent = '▼';
+  } else {
+    body.style.display = 'none';
+    icon.textContent = '▶';
+  }
+}
+
+function adminLog(msg, isErr) {
+  const logDiv = document.getElementById('admin-log');
+  logDiv.style.display = 'block';
+  const color = isErr ? '#f87171' : '#86efac';
+  const time = new Date().toLocaleTimeString();
+  logDiv.innerHTML += '<div style="color:' + color + '">[' + time + '] ' + msg + '</div>';
+  logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+async function adminRefreshStatus() {
+  if (!_adminContract) { adminLog('⚠️ 请先连接钱包并确保合约已部署', true); return; }
+  const box = document.getElementById('admin-status-box');
+  box.innerHTML = '<span style="color:var(--text-muted)">⏳ 加载中...</span>';
+  try {
+    const [
+      presaleActive, tradingActive,
+      mintCostBNB, fillAmountBNB, totalBNBCollected,
+      tokensPerMint, bnbBalance,
+      owner
+    ] = await Promise.all([
+      _adminContract.presaleActive(),
+      _adminContract.tradingActive(),
+      _adminContract.mintCostBNB(),
+      _adminContract.fillAmountBNB(),
+      _adminContract.totalBNBCollected(),
+      _adminContract.tokensPerMint(),
+      provider.getBalance(_adminContractAddr),
+      _adminContract.owner()
+    ]);
+    const fmt = v => parseFloat(ethers.utils.formatEther(v)).toFixed(4);
+    const fmtTok = v => parseFloat(ethers.utils.formatUnits(v, 18)).toLocaleString();
+    const myAddr = await signer.getAddress();
+    const isOwner = owner.toLowerCase() === myAddr.toLowerCase();
+
+    box.innerHTML =
+      '<b>Owner:</b> <code style="font-size:.72rem">' + owner + '</code>' +
+      (isOwner ? ' <span style="color:#4ade80">✅ 你是 Owner</span>' : ' <span style="color:#f87171">❌ 你不是 Owner</span>') +
+      '<br/><b>预售状态:</b> ' + (presaleActive ? '<span style="color:#4ade80">✅ 进行中</span>' : '<span style="color:var(--text-muted)">已结束</span>') +
+      '<br/><b>交易状态:</b> ' + (tradingActive ? '<span style="color:#4ade80">✅ 已开启</span>' : '<span style="color:#f87171">❌ 未开启</span>') +
+      '<br/><b>合约 BNB 余额:</b> <span style="color:#fbbf24">' + fmt(bnbBalance) + ' BNB</span>' +
+      '<br/><b>已募集 BNB:</b> ' + fmt(totalBNBCollected) + ' / ' + fmt(fillAmountBNB) + ' BNB' +
+      '<br/><b>单次 Mint 费用:</b> ' + fmt(mintCostBNB) + ' BNB' +
+      '<br/><b>单次 Mint 代币:</b> ' + fmtTok(tokensPerMint) + ' tokens';
+  } catch(e) {
+    box.innerHTML = '<span style="color:#f87171">❌ 读取失败: ' + e.message + '</span>';
+  }
+}
+
+async function adminWithdrawBNB() {
+  if (!_adminContract) { adminLog('⚠️ 合约未初始化', true); return; }
+  if (!confirm('确认将合约内所有 BNB 提取到 Owner 钱包？')) return;
+  try {
+    adminLog('⏳ 提交 withdrawBNB 交易...');
+    const tx = await _adminContract.withdrawBNB();
+    adminLog('📤 TX: ' + tx.hash.slice(0,12) + '...');
+    const receipt = await tx.wait();
+    if (receipt.status === 1) {
+      adminLog('✅ BNB 提取成功！TX: ' + tx.hash.slice(0,12) + '...');
+      await adminRefreshStatus();
+    } else {
+      adminLog('❌ 交易失败（revert）', true);
+    }
+  } catch(e) {
+    adminLog('❌ 错误: ' + (e.reason || e.message || e.code), true);
+  }
+}
+
+async function adminCompletePresale() {
+  if (!_adminContract) { adminLog('⚠️ 合约未初始化', true); return; }
+  if (!confirm('确认手动结束预售？这将把合约内所有 BNB 和代币注入 Uniswap 流动性！')) return;
+  try {
+    adminLog('⏳ 提交 completePresale 交易...');
+    const tx = await _adminContract.completePresale();
+    adminLog('📤 TX: ' + tx.hash.slice(0,12) + '...');
+    const receipt = await tx.wait();
+    if (receipt.status === 1) {
+      adminLog('✅ 预售已结束，流动性已注入！');
+      await adminRefreshStatus();
+    } else {
+      adminLog('❌ 交易失败（revert）', true);
+    }
+  } catch(e) {
+    adminLog('❌ 错误: ' + (e.reason || e.message || e.code), true);
+  }
+}
+
+async function adminEnableTrading() {
+  if (!_adminContract) { adminLog('⚠️ 合约未初始化', true); return; }
+  if (!confirm('确认开启交易？')) return;
+  try {
+    adminLog('⏳ 提交 enableTrading 交易...');
+    const tx = await _adminContract.enableTrading();
+    adminLog('📤 TX: ' + tx.hash.slice(0,12) + '...');
+    await tx.wait();
+    adminLog('✅ 交易已开启！');
+    await adminRefreshStatus();
+  } catch(e) {
+    adminLog('❌ 错误: ' + (e.reason || e.message || e.code), true);
+  }
+}
+
+async function adminSetBuyTax() {
+  if (!_adminContract) { adminLog('⚠️ 合约未初始化', true); return; }
+  const val = parseInt(document.getElementById('admin-buy-tax').value);
+  if (isNaN(val) || val < 0 || val > 2500) { adminLog('❌ 买入税无效（0-2500 bps）', true); return; }
+  try {
+    adminLog('⏳ 设置买入税: ' + val + ' bps (' + (val/100) + '%)...');
+    const tx = await _adminContract.setBuyTax(val);
+    await tx.wait();
+    adminLog('✅ 买入税已设置为 ' + val + ' bps');
+    await adminRefreshStatus();
+  } catch(e) {
+    adminLog('❌ 错误: ' + (e.reason || e.message || e.code), true);
+  }
+}
+
+async function adminSetSellTax() {
+  if (!_adminContract) { adminLog('⚠️ 合约未初始化', true); return; }
+  const val = parseInt(document.getElementById('admin-sell-tax').value);
+  if (isNaN(val) || val < 0 || val > 2500) { adminLog('❌ 卖出税无效（0-2500 bps）', true); return; }
+  try {
+    adminLog('⏳ 设置卖出税: ' + val + ' bps (' + (val/100) + '%)...');
+    const tx = await _adminContract.setSellTax(val);
+    await tx.wait();
+    adminLog('✅ 卖出税已设置为 ' + val + ' bps');
+    await adminRefreshStatus();
+  } catch(e) {
+    adminLog('❌ 错误: ' + (e.reason || e.message || e.code), true);
+  }
+}
+
+/* 外部入口：也可以直接输入合约地址打开管理面板 */
+async function openAdminPanelByAddress() {
+  const addr = prompt('输入合约地址（0x...）:');
+  if (!addr || addr.length !== 42) { alert('地址无效'); return; }
+  if (!signer) { alert('请先连接钱包'); return; }
+  initAdminPanel(addr);
+}
+
+
 
 </script>
 </body>
