@@ -744,10 +744,13 @@
       <div class="contract-label">CONTRACT ADDRESS</div>
       <div class="contract-addr" id="contract-addr"></div>
     </div>
-    <!-- 合约验证区域 -->
-    <div class="verify-section" id="verify-section" style="display:none">
-      <div class="verify-body" id="verify-body" class="open" style="max-height:1200px;padding:14px">
-        <h4 style="font-size:.9rem;margin:0 0 10px;color:var(--accent1)">🔍 合约开源验证（via-IR）</h4>
+    <!-- 合约验证区域（默认折叠） -->
+    <div class="verify-section" id="verify-section" style="display:none;border:1px solid rgba(13,148,136,.35);border-radius:12px;overflow:hidden;margin-top:18px">
+      <div style="background:rgba(13,148,136,.12);padding:10px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="toggleVerifyPanel()">
+        <span style="font-weight:700;color:var(--accent1);font-size:.92rem">🔍 合约开源验证（via-IR）</span>
+        <span id="verify-toggle-icon" style="color:var(--text-muted);font-size:.85rem">▶</span>
+      </div>
+      <div class="verify-body" id="verify-body" style="max-height:0;overflow:hidden;transition:max-height .3s ease;padding:0 14px">
         <!-- 一键验证按钮 -->
         <div style="margin-bottom:12px">
           <button id="btn-one-click-verify" onclick="oneClickVerify()" style="background:linear-gradient(135deg,#7c3aed,#0d9488);color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:.9rem;cursor:pointer;font-weight:600;transition:all .2s">
@@ -795,13 +798,13 @@
         🛡️ 管理已有合约（输入合约地址）
       </button>
     </div>
-    <!-- ===== 管理员控制面板 ===== -->
+    <!-- ===== 管理员控制面板（默认折叠） ===== -->
     <div id="admin-panel" style="display:none;margin-top:18px;border:1px solid rgba(124,58,237,.35);border-radius:12px;overflow:hidden">
       <div style="background:rgba(124,58,237,.12);padding:12px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="toggleAdminPanel()">
         <span style="font-weight:700;color:var(--accent2);font-size:.92rem">🛡️ 管理员控制面板（仅 Owner 可用）</span>
-        <span id="admin-toggle-icon" style="color:var(--text-muted);font-size:.85rem">▼</span>
+        <span id="admin-toggle-icon" style="color:var(--text-muted);font-size:.85rem">▶</span>
       </div>
-      <div id="admin-panel-body" style="padding:16px;display:block">
+      <div id="admin-panel-body" style="padding:0 16px;max-height:0;overflow:hidden;transition:max-height .3s ease">
         <!-- 合约状态 -->
         <div style="margin-bottom:14px">
           <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px;font-weight:600">📊 合约状态</div>
@@ -1800,6 +1803,12 @@ function initAdminPanel(contractAddr) {
   if (!contractAddr) return;
   // 先显示面板，再加载合约（确保面板始终可见）
   document.getElementById('admin-panel').style.display = 'block';
+  // 自动展开管理面板
+  const body = document.getElementById('admin-panel-body');
+  const icon = document.getElementById('admin-toggle-icon');
+  body.style.maxHeight = '3000px';
+  body.style.padding = '16px';
+  icon.textContent = '▼';
   try {
     _adminContract = new ethers.Contract(contractAddr, CONTRACT_ABI, signer);
     adminRefreshStatus();
@@ -1871,11 +1880,27 @@ async function adminRawStatus(contractAddr) {
 function toggleAdminPanel() {
   const body = document.getElementById('admin-panel-body');
   const icon = document.getElementById('admin-toggle-icon');
-  if (body.style.display === 'none') {
-    body.style.display = 'block';
+  if (body.style.maxHeight === '0px' || body.style.maxHeight === '') {
+    body.style.maxHeight = '3000px';
+    body.style.padding = '16px';
     icon.textContent = '▼';
   } else {
-    body.style.display = 'none';
+    body.style.maxHeight = '0px';
+    body.style.padding = '0 16px';
+    icon.textContent = '▶';
+  }
+}
+
+function toggleVerifyPanel() {
+  const body = document.getElementById('verify-body');
+  const icon = document.getElementById('verify-toggle-icon');
+  if (body.style.maxHeight === '0px' || body.style.maxHeight === '') {
+    body.style.maxHeight = '1200px';
+    body.style.padding = '14px';
+    icon.textContent = '▼';
+  } else {
+    body.style.maxHeight = '0px';
+    body.style.padding = '0 14px';
     icon.textContent = '▶';
   }
 }

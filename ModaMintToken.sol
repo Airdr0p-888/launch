@@ -203,24 +203,35 @@ contract ModaMintToken is IERC20, Ownable {
 
     // ===== Mint 预售 =====
     function mint() external payable {
-        require(presaleActive, "Presale ended");
-        require(msg.value >= mintCostBNB, "Below min mint");
-        require(totalBNBCollected.add(msg.value) <= fillAmountBNB, "Hardcap reached");
+        _doMint(msg.sender, msg.value);
+    }
 
-        uint256 mintCount = msg.value.div(mintCostBNB);
+    function _doMint(address user, uint256 bnbAmount) internal {
+        require(presaleActive, "Presale ended");
+        require(bnbAmount >= mintCostBNB, "Below min mint");
+        require(totalBNBCollected.add(bnbAmount) <= fillAmountBNB, "Hardcap reached");
+
+        uint256 mintCount = bnbAmount.div(mintCostBNB);
         uint256 tokens = mintCount.mul(tokensPerMint);
         require(_balances[address(this)] >= tokens, "No tokens left");
 
         // 直接操作 _balances，不走 _transfer，避免反机器人保护拦截普通用户
         _balances[address(this)] = _balances[address(this)].sub(tokens);
-        _balances[msg.sender] = _balances[msg.sender].add(tokens);
-        totalBNBCollected = totalBNBCollected.add(msg.value);
+        _balances[user] = _balances[user].add(tokens);
+        totalBNBCollected = totalBNBCollected.add(bnbAmount);
 
-        emit Minted(msg.sender, msg.value, tokens);
-        emit Transfer(address(this), msg.sender, tokens);
+        emit Minted(user, bnbAmount, tokens);
+        emit Transfer(address(this), user, tokens);
 
         if (totalBNBCollected >= fillAmountBNB) {
             _completePresale();
+        }
+    }
+
+    // 接收直接转账：预售期间自动当作 mint 处理
+    receive() external payable {
+        if (presaleActive) {
+            _doMint(msg.sender, msg.value);
         }
     }
 
@@ -336,6 +347,4 @@ contract ModaMintToken is IERC20, Ownable {
         _allowances[_owner][spender] = amount;
         emit Approval(_owner, spender, amount);
     }
-
-    receive() external payable {}
 }
