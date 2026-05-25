@@ -448,6 +448,7 @@
     <div class="nav-right">
       <span id="wallet-addr-display" class="wallet-addr" style="display:none"></span>
       <button class="btn btn-outline-purple" id="btn-connect" onclick="connectWallet()">连接钱包 📡</button>
+      <button class="btn btn-ghost" id="btn-admin-nav" onclick="openAdminPanelByAddress()" style="display:none;border:1px solid rgba(124,58,237,.4);color:var(--accent2)">🛡️ 管理合约</button>
       <button class="btn btn-ghost" onclick="alert('直播功能即将上线')">开通直播</button>
     </div>
   </nav>
@@ -847,6 +848,16 @@
             <button onclick="adminSetSellTax()" style="background:rgba(37,99,235,.3);color:#93c5fd;border:1px solid rgba(37,99,235,.4);padding:6px 16px;border-radius:6px;cursor:pointer;font-size:.8rem">设置卖出税</button>
           </div>
         </div>
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:12px 0"/>
+        <!-- Mint 测试 -->
+        <div style="margin-bottom:6px">
+          <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px;font-weight:600">🪙 Mint 测试（诊断）</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+            <span style="font-size:.8rem;color:var(--text-muted)">Mint 数量 (1次):</span>
+            <button onclick="adminMintTest(1)" style="background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-size:.83rem;font-weight:600">Mint 1 次</button>
+          </div>
+          <div id="admin-mint-result" style="font-size:.78rem;color:var(--text-muted);margin-top:4px"></div>
+        </div>
         <!-- 操作日志 -->
         <div id="admin-log" style="display:none;margin-top:12px;background:rgba(0,0,0,.25);border-radius:8px;padding:10px;font-size:.78rem;color:var(--text-muted);max-height:120px;overflow-y:auto;line-height:1.7"></div>
       </div>
@@ -963,6 +974,9 @@ async function connectWallet(){
     console.log('已连接', walletType, '网络:', isTestnet ? 'BSC Testnet' : 'BSC Mainnet');
 
     setStep(1,'done'); setStep(2,'active'); setLine(1,'done');
+
+    // 显示「管理合约」导航按钮
+    document.getElementById('btn-admin-nav').style.display = 'inline-block';
 
     // 监听账户/链切换
     wallet.on('accountsChanged', (accts) => {
@@ -1936,12 +1950,128 @@ async function adminSetSellTax() {
   }
 }
 
+/* Mint 测试：诊断 Mint 是否正常工作 */
+async function adminMintTest(times) {
+  if (!_adminContract) { adminLog('请先连接合约', true); return; }
+  const resultDiv = document.getElementById('admin-mint-result');
+  resultDiv.innerHTML = '<span style="color:#fbbf24">⏳ 读取 Mint 参数...</span>';
+  try {
+    // 先读取合约的 mint 相关参数
+    const presaleActive = await _adminContract.presaleActive();
+    const mintCostBNB = await _adminContract.mintCostBNB();
+    const tokensPerMint = await _adminContract.tokensPerMint();
+    const fillAmountBNB = await _adminContract.fillAmountBNB();
+    const totalBNBCollected = await _adminContract.totalBNBCollected();
+    const myBalance = await _adminContract.balanceOf(await signer.getAddress());
+    const contractTokenBal = await _adminContract.balanceOf(_adminContractAddr);
+
+    const fmt = v => parseFloat(ethers.utils.formatEther(v)).toFixed(6);
+    const fmtTok = v => parseFloat(ethers.utils.formatUnits(v, 18)).toFixed(2);
+
+    let diag = '<div style="background:rgba(0,0,0,.15);border-radius:6px;padding:10px;font-size:.76rem;line-height:1.8;margin-top:6px">';
+    diag += '<b>presaleActive:</b> ' + (presaleActive ? '✅ true' : '<span style="color:#f87171">❌ false (预售已结束)</span>');
+    diag += '<br/><b>mintCostBNB:</b> ' + fmt(mintCostBNB) + ' BNB';
+    diag += '<br/><b>tokensPerMint:</b> ' + fmtTok(tokensPerMint) + ' tokens';
+    if (tokensPerMint.eq(0)) {
+      diag += ' <span style="color:#f87171;font-weight:700">❌ 为0！这就是 Mint 没币的原因！</span>';
+      diag += '<br/><span style="color:#f87171">原因：totalSupply × mintCostBNB / fillBNB = 0（整数除法截断）</span>';
+      diag += '<br/><span style="color:#f87171">需要：totalSupply 足够大，或 mintCostBNB / fillBNB 比例不能太小</span>';
+    }
+    diag += '<br/><b>已募集:</b> ' + fmt(totalBNBCollected) + ' / ' + fmt(fillAmountBNB) + ' BNB';
+    diag += '<br/><b>你的代币余额:</b> ' + fmtTok(myBalance);
+    diag += '<br/><b>合约代币余额:</b> ' + fmtTok(contractTokenBal);
+    diag += '</div>';
+
+    resultDiv.innerHTML = diag;
+
+    if (tokensPerMint.eq(0)) {
+      adminLog('❌ tokensPerMint = 0，Mint 无法获得代币！需要重新部署合约。', true);
+      return;
+    }
+    if (!presaleActive) {
+      adminLog('❌ 预售已结束，无法 Mint', true);
+      return;
+    }
+
+    // 尝试实际 Mint
+    adminLog('⏳ 尝试 Mint ' + times + ' 次...');
+    const totalCost = mintCostBNB.mul(times);
+    adminLog('  花费: ' + fmt(totalCost) + ' BNB, 预期获得: ' + fmtTok(tokensPerMint.mul(times)) + ' tokens');
+
+    const tx = await _adminContract.mint({ value: totalCost });
+    adminLog('📤 TX: ' + tx.hash.slice(0,12) + '...');
+    const receipt = await tx.wait();
+
+    if (receipt.status === 1) {
+      // 读取新余额
+      const newBal = await _adminContract.balanceOf(await signer.getAddress());
+      adminLog('✅ Mint 成功！当前余额: ' + fmtTok(newBal) + ' tokens');
+      resultDiv.innerHTML += '<div style="color:#4ade80;font-weight:700;margin-top:6px">✅ Mint 成功！当前余额: ' + fmtTok(newBal) + ' tokens</div>';
+      await adminRefreshStatus();
+    } else {
+      adminLog('❌ Mint 交易 revert', true);
+      resultDiv.innerHTML += '<div style="color:#f87171;margin-top:6px">❌ 交易 revert</div>';
+    }
+  } catch(e) {
+    const reason = e.reason || e.message || '';
+    adminLog('❌ Mint 错误: ' + reason, true);
+    resultDiv.innerHTML += '<div style="color:#f87171;margin-top:6px">❌ ' + reason + '</div>';
+    if (reason.includes('Presale ended')) {
+      resultDiv.innerHTML += '<div style="color:#fbbf24;margin-top:4px">→ 预售已结束，需要重新部署新合约</div>';
+    } else if (reason.includes('Below min')) {
+      resultDiv.innerHTML += '<div style="color:#fbbf24;margin-top:4px">→ 发送的 BNB 低于 mintCostBNB</div>';
+    } else if (reason.includes('Hardcap')) {
+      resultDiv.innerHTML += '<div style="color:#fbbf24;margin-top:4px">→ 预售硬顶已满</div>';
+    }
+  }
+}
+
 /* 外部入口：也可以直接输入合约地址打开管理面板 */
-async function openAdminPanelByAddress() {
-  const addr = prompt('输入合约地址（0x...）:');
-  if (!addr || addr.length !== 42) { alert('地址无效'); return; }
+function openAdminPanelByAddress() {
   if (!signer) { alert('请先连接钱包'); return; }
-  initAdminPanel(addr);
+  // 显示合约地址输入框
+  const box = document.getElementById('admin-input-box');
+  if (box) {
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    if (box.style.display === 'block') {
+      document.getElementById('admin-addr-input').focus();
+    }
+    return;
+  }
+  // 动态创建输入区域
+  const container = document.createElement('div');
+  container.id = 'admin-input-box';
+  container.style.cssText = 'display:block;margin:20px auto 0;max-width:500px;padding:18px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.3);border-radius:12px;';
+  container.innerHTML =
+    '<div style="font-weight:700;color:var(--accent2);margin-bottom:10px;font-size:.9rem">🛡️ 管理已有合约</div>' +
+    '<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:10px">输入你要管理的代币合约地址（必须是 Owner 钱包）</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    '<input id="admin-addr-input" type="text" placeholder="0x..." style="flex:1;min-width:250px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:8px 12px;color:var(--text-body);font-size:.85rem;font-family:monospace" />' +
+    '<button onclick="doLoadAdminContract()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:600;font-size:.85rem">连接</button>' +
+    '</div>';
+  // 插入到页面主体开头
+  const main = document.querySelector('.page-hero') || document.querySelector('header');
+  main.after(container);
+  document.getElementById('admin-addr-input').focus();
+  // 回车提交
+  document.getElementById('admin-addr-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLoadAdminContract();
+  });
+}
+
+async function doLoadAdminContract() {
+  const addr = document.getElementById('admin-addr-input').value.trim();
+  if (!addr || !addr.startsWith('0x') || addr.length !== 42) { alert('地址格式无效，需要 0x 开头 42 字符'); return; }
+  try {
+    initAdminPanel(addr);
+    // 隐藏输入框
+    const box = document.getElementById('admin-input-box');
+    if (box) box.style.display = 'none';
+    // 滚动到管理面板
+    document.getElementById('admin-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch(e) {
+    alert('加载合约失败: ' + (e.reason || e.message));
+  }
 }
 
 
