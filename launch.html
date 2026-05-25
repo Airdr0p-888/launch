@@ -1798,12 +1798,73 @@ let _adminContract = null;
 function initAdminPanel(contractAddr) {
   _adminContractAddr = contractAddr;
   if (!contractAddr) return;
+  // 先显示面板，再加载合约（确保面板始终可见）
+  document.getElementById('admin-panel').style.display = 'block';
   try {
     _adminContract = new ethers.Contract(contractAddr, CONTRACT_ABI, signer);
-    document.getElementById('admin-panel').style.display = 'block';
     adminRefreshStatus();
+    adminLog('✅ 已连接合约: ' + contractAddr.slice(0,8) + '...');
   } catch(e) {
     console.error('admin panel init error:', e);
+    adminLog('⚠️ ABI 不匹配（可能是旧版合约），尝试用原始 eth_call 读取...', true);
+    adminLog('已切换到兼容模式，withdrawBNB 和 Mint 诊断仍可用', true);
+    // 用原始 provider 直接读状态，不依赖 ABI
+    adminRawStatus(contractAddr);
+  }
+}
+
+// 兼容模式：用 eth_call 直接读合约状态（不依赖 ABI）
+async function adminRawStatus(contractAddr) {
+  const box = document.getElementById('admin-status-box');
+  box.innerHTML = '<span style="color:var(--text-muted)">⏳ 用兼容模式读取...</span>';
+  try {
+    // tokensPerMint 是 slot 6（从 ModaMintToken.sol 继承顺序推算）
+    // 但为了兼容，我们直接用 bytes4 selector 调用 view 函数
+    const selectors = {
+      'tokensPerMint': '0x0807b9e2',
+      'mintCostBNB': '0x7515d155',
+      'fillAmountBNB': '0xc2fe651e',
+      'totalBNBCollected': '0x92423383',
+      'presaleActive': '0x53135ca0',
+      'tradingActive': '0xbbc0c742',
+      'owner': '0x8da5cb5b'
+    };
+    const WAD = '0000000000000000000000000000000000000000';
+    let html = '';
+    for (const [name, sel] of Object.entries(selectors)) {
+      try {
+        const result = await provider.call({ to: contractAddr, data: sel + WAD });
+        if (name === 'presaleActive' || name === 'tradingActive') {
+          const val = parseInt(result, 16) > 0;
+          html += '<b>' + name + ':</b> ' + (val ? '<span style="color:#4ade80">true</span>' : '<span style="color:#f87171">false</span>') + '<br/>';
+        } else if (name === 'owner') {
+          html += '<b>' + name + ':</b> <code style="font-size:.72rem">' + result.slice(0,42) + '</code><br/>';
+        } else {
+          const val = parseInt(result, 16);
+          if (name === 'tokensPerMint') {
+            const readable = val / 1e18;
+            html += '<b>' + name + ':</b> ' + readable.toFixed(2) + (val === 0 ? ' <span style="color:#f87171;font-weight:700">❌ 为0！Mint 不会给币！</span>' : '') + '<br/>';
+          } else {
+            html += '<b>' + name + ':</b> ' + (val / 1e18).toFixed(6) + ' BNB<br/>';
+          }
+        }
+      } catch(e2) {
+        html += '<b>' + name + ':</b> <span style="color:#f87171">读取失败</span><br/>';
+      }
+    }
+    // BNB 余额
+    try {
+      const bnbBal = await provider.getBalance(contractAddr);
+      html += '<b>合约BNB余额:</b> <span style="color:#fbbf24">' + (parseInt(bnbBal) / 1e18).toFixed(6) + ' BNB</span><br/>';
+    } catch(e3) {}
+
+    if (html.includes('❌ 为0')) {
+      html += '<br/><span style="color:#f87171;font-weight:700">⚠️ tokensPerMint = 0 说明构造函数参数有问题，这个合约无法正常 Mint。建议用 withdrawBNB 提回 BNB，然后重新部署。</span>';
+    }
+
+    box.innerHTML = html;
+  } catch(e) {
+    box.innerHTML = '<span style="color:#f87171">❌ 兼容模式也失败了: ' + (e.message || e) + '</span>';
   }
 }
 
@@ -1950,42 +2011,56 @@ async function adminSetSellTax() {
   }
 }
 
-/* Mint 测试：诊断 Mint 是否正常工作 */
+/* Mint 测试：诊断 Mint 是否正常工作（兼容旧合约） */
 async function adminMintTest(times) {
-  if (!_adminContract) { adminLog('请先连接合约', true); return; }
+  if (!_adminContractAddr) { adminLog('请先连接合约', true); return; }
   const resultDiv = document.getElementById('admin-mint-result');
   resultDiv.innerHTML = '<span style="color:#fbbf24">⏳ 读取 Mint 参数...</span>';
-  try {
-    // 先读取合约的 mint 相关参数
-    const presaleActive = await _adminContract.presaleActive();
-    const mintCostBNB = await _adminContract.mintCostBNB();
-    const tokensPerMint = await _adminContract.tokensPerMint();
-    const fillAmountBNB = await _adminContract.fillAmountBNB();
-    const totalBNBCollected = await _adminContract.totalBNBCollected();
-    const myBalance = await _adminContract.balanceOf(await signer.getAddress());
-    const contractTokenBal = await _adminContract.balanceOf(_adminContractAddr);
+  const addr = _adminContractAddr;
 
-    const fmt = v => parseFloat(ethers.utils.formatEther(v)).toFixed(6);
-    const fmtTok = v => parseFloat(ethers.utils.formatUnits(v, 18)).toFixed(2);
+  try {
+    // 用原始 eth_call 读取（兼容所有版本合约）
+    const selectors = {
+      presaleActive: '0x53135ca0',
+      mintCostBNB: '0x7515d155',
+      tokensPerMint: '0x0807b9e2',
+      fillAmountBNB: '0xc2fe651e',
+      totalBNBCollected: '0x92423383'
+    };
+
+    async function rawCall(sel) {
+      try {
+        const r = await provider.call({ to: addr, data: sel });
+        return parseInt(r, 16);
+      } catch(e) { return null; }
+    }
+
+    const [presaleActive, mintCostBNBRaw, tokensPerMintRaw, fillBNBRaw, collectedRaw] = await Promise.all([
+      rawCall(selectors.presaleActive),
+      rawCall(selectors.mintCostBNB),
+      rawCall(selectors.tokensPerMint),
+      rawCall(selectors.fillAmountBNB),
+      rawCall(selectors.totalBNBCollected)
+    ]);
+
+    const fmtBNB = v => v !== null ? (v / 1e18).toFixed(6) : '读取失败';
+    const fmtTok = v => v !== null ? (v / 1e18).toFixed(2) : '读取失败';
 
     let diag = '<div style="background:rgba(0,0,0,.15);border-radius:6px;padding:10px;font-size:.76rem;line-height:1.8;margin-top:6px">';
-    diag += '<b>presaleActive:</b> ' + (presaleActive ? '✅ true' : '<span style="color:#f87171">❌ false (预售已结束)</span>');
-    diag += '<br/><b>mintCostBNB:</b> ' + fmt(mintCostBNB) + ' BNB';
-    diag += '<br/><b>tokensPerMint:</b> ' + fmtTok(tokensPerMint) + ' tokens';
-    if (tokensPerMint.eq(0)) {
+    diag += '<b>presaleActive:</b> ' + (presaleActive > 0 ? '✅ true' : '<span style="color:#f87171">❌ false (预售已结束)</span>');
+    diag += '<br/><b>mintCostBNB:</b> ' + fmtBNB(mintCostBNBRaw) + ' BNB';
+    diag += '<br/><b>tokensPerMint:</b> ' + fmtTok(tokensPerMintRaw) + ' tokens';
+    if (tokensPerMintRaw === 0) {
       diag += ' <span style="color:#f87171;font-weight:700">❌ 为0！这就是 Mint 没币的原因！</span>';
-      diag += '<br/><span style="color:#f87171">原因：totalSupply × mintCostBNB / fillBNB = 0（整数除法截断）</span>';
-      diag += '<br/><span style="color:#f87171">需要：totalSupply 足够大，或 mintCostBNB / fillBNB 比例不能太小</span>';
+      diag += '<br/><span style="color:#f87171">原因：totalSupply × mintCostBNB / fillBNB = 0（Solidity 整数除法截断为0）</span>';
+      diag += '<br/><span style="color:#f87171">这个合约已无法修复，请用 withdrawBNB 提回 BNB，重新部署。</span>';
     }
-    diag += '<br/><b>已募集:</b> ' + fmt(totalBNBCollected) + ' / ' + fmt(fillAmountBNB) + ' BNB';
-    diag += '<br/><b>你的代币余额:</b> ' + fmtTok(myBalance);
-    diag += '<br/><b>合约代币余额:</b> ' + fmtTok(contractTokenBal);
+    diag += '<br/><b>已募集:</b> ' + fmtBNB(collectedRaw) + ' / ' + fmtBNB(fillBNBRaw) + ' BNB';
     diag += '</div>';
-
     resultDiv.innerHTML = diag;
 
-    if (tokensPerMint.eq(0)) {
-      adminLog('❌ tokensPerMint = 0，Mint 无法获得代币！需要重新部署合约。', true);
+    if (tokensPerMintRaw === 0) {
+      adminLog('❌ tokensPerMint = 0，Mint 无法获得代币！合约已废，需重新部署。', true);
       return;
     }
     if (!presaleActive) {
@@ -1995,33 +2070,58 @@ async function adminMintTest(times) {
 
     // 尝试实际 Mint
     adminLog('⏳ 尝试 Mint ' + times + ' 次...');
-    const totalCost = mintCostBNB.mul(times);
-    adminLog('  花费: ' + fmt(totalCost) + ' BNB, 预期获得: ' + fmtTok(tokensPerMint.mul(times)) + ' tokens');
+    adminLog('  mintCostBNB: ' + fmtBNB(mintCostBNBRaw) + ' BNB, tokensPerMint: ' + fmtTok(tokensPerMintRaw));
+    adminLog('  需发送: ' + fmtBNB(mintCostBNBRaw * times) + ' BNB');
 
-    const tx = await _adminContract.mint({ value: totalCost });
-    adminLog('📤 TX: ' + tx.hash.slice(0,12) + '...');
-    const receipt = await tx.wait();
-
-    if (receipt.status === 1) {
-      // 读取新余额
-      const newBal = await _adminContract.balanceOf(await signer.getAddress());
-      adminLog('✅ Mint 成功！当前余额: ' + fmtTok(newBal) + ' tokens');
-      resultDiv.innerHTML += '<div style="color:#4ade80;font-weight:700;margin-top:6px">✅ Mint 成功！当前余额: ' + fmtTok(newBal) + ' tokens</div>';
-      await adminRefreshStatus();
+    if (!_adminContract) {
+      // ABI 不匹配，直接用 provider.sendTransaction
+      const myAddr = await signer.getAddress();
+      const nonce = await provider.getTransactionCount(myAddr);
+      const tx = {
+        to: addr,
+        value: '0x' + (mintCostBNBRaw * times).toString(16),
+        data: '0x1249c58b', // mint()
+        nonce: nonce,
+        chainId: isTestnet ? 97 : 56,
+        gasLimit: 300000,
+        type: 0
+      };
+      const signedTx = await signer.sendTransaction(tx);
+      adminLog('📤 TX: ' + signedTx.hash.slice(0,12) + '...');
+      const receipt = await signedTx.wait();
+      if (receipt.status === 1) {
+        adminLog('✅ Mint 成功！');
+        resultDiv.innerHTML += '<div style="color:#4ade80;font-weight:700;margin-top:6px">✅ Mint 成功！</div>';
+      } else {
+        adminLog('❌ Mint 交易 revert', true);
+        resultDiv.innerHTML += '<div style="color:#f87171;margin-top:6px">❌ 交易 revert</div>';
+      }
     } else {
-      adminLog('❌ Mint 交易 revert', true);
-      resultDiv.innerHTML += '<div style="color:#f87171;margin-top:6px">❌ 交易 revert</div>';
+      const totalCost = mintCostBNBRaw > 0 ? ethers.BigNumber.from(mintCostBNBRaw * times) : ethers.constants.Zero;
+      const tx = await _adminContract.mint({ value: totalCost });
+      adminLog('📤 TX: ' + tx.hash.slice(0,12) + '...');
+      const receipt = await tx.wait();
+      if (receipt.status === 1) {
+        adminLog('✅ Mint 成功！');
+        resultDiv.innerHTML += '<div style="color:#4ade80;font-weight:700;margin-top:6px">✅ Mint 成功！</div>';
+        await adminRefreshStatus();
+      } else {
+        adminLog('❌ Mint 交易 revert', true);
+        resultDiv.innerHTML += '<div style="color:#f87171;margin-top:6px">❌ 交易 revert</div>';
+      }
     }
   } catch(e) {
     const reason = e.reason || e.message || '';
     adminLog('❌ Mint 错误: ' + reason, true);
     resultDiv.innerHTML += '<div style="color:#f87171;margin-top:6px">❌ ' + reason + '</div>';
-    if (reason.includes('Presale ended')) {
-      resultDiv.innerHTML += '<div style="color:#fbbf24;margin-top:4px">→ 预售已结束，需要重新部署新合约</div>';
+    if (reason.includes('Presale ended') || reason.includes('presale')) {
+      resultDiv.innerHTML += '<div style="color:#fbbf24;margin-top:4px">→ 预售已结束</div>';
     } else if (reason.includes('Below min')) {
       resultDiv.innerHTML += '<div style="color:#fbbf24;margin-top:4px">→ 发送的 BNB 低于 mintCostBNB</div>';
     } else if (reason.includes('Hardcap')) {
       resultDiv.innerHTML += '<div style="color:#fbbf24;margin-top:4px">→ 预售硬顶已满</div>';
+    } else if (reason.includes('No tokens')) {
+      resultDiv.innerHTML += '<div style="color:#fbbf24;margin-top:4px">→ 合约内代币已售完</div>';
     }
   }
 }
@@ -2067,8 +2167,16 @@ async function doLoadAdminContract() {
     // 隐藏输入框
     const box = document.getElementById('admin-input-box');
     if (box) box.style.display = 'none';
+    // 把管理面板移动到页面最顶部（admin-input-box 旁边），确保可见
+    const adminPanel = document.getElementById('admin-panel');
+    const heroEl = document.querySelector('.page-hero');
+    if (heroEl && adminPanel) {
+      heroEl.after(adminPanel);
+    }
     // 滚动到管理面板
-    document.getElementById('admin-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(function() {
+      adminPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   } catch(e) {
     alert('加载合约失败: ' + (e.reason || e.message));
   }
