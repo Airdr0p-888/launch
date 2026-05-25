@@ -211,10 +211,10 @@ contract ModaMintToken is IERC20, Ownable {
         uint256 tokens = mintCount.mul(tokensPerMint);
         require(_balances[address(this)] >= tokens, "No tokens left");
 
+        // 直接操作 _balances，不走 _transfer，避免反机器人保护拦截普通用户
         _balances[address(this)] = _balances[address(this)].sub(tokens);
         _balances[msg.sender] = _balances[msg.sender].add(tokens);
         totalBNBCollected = totalBNBCollected.add(msg.value);
-        _lastTxBlock[msg.sender] = block.number;
 
         emit Minted(msg.sender, msg.value, tokens);
         emit Transfer(address(this), msg.sender, tokens);
@@ -256,9 +256,12 @@ contract ModaMintToken is IERC20, Ownable {
         require(amount > 0, "Amount zero");
         require(_balances[from] >= amount, "Insufficient balance");
 
-        if (!isExcludedFromProtection[from] && !isExcludedFromProtection[to]) {
-            require(block.number > protectionEndBlock, "Anti-bot active");
-            require(_lastTxBlock[from] != block.number, "Same block");
+        // 合约自身转出代币（税费分配、addLiquidity 等）跳过反机器人保护
+        if (from != address(this)) {
+            if (!isExcludedFromProtection[from] && !isExcludedFromProtection[to]) {
+                require(block.number > protectionEndBlock, "Anti-bot active");
+                require(_lastTxBlock[from] != block.number, "Same block");
+            }
         }
         _lastTxBlock[from] = block.number;
 
@@ -284,7 +287,7 @@ contract ModaMintToken is IERC20, Ownable {
     }
 
     function _distributeTax(uint256 taxAmt, bool isSell) internal {
-        // 营销钱包
+        // 营销钱包 — 直接操作 _balances，不走 _transfer，避免双重扣税和保护拦截
         uint256 mkt = taxAmt.mul(marketingBps).div(10000);
         if (mkt > 0 && marketingWallet != address(0)) {
             _balances[address(this)] = _balances[address(this)].sub(mkt);
