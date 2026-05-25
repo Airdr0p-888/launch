@@ -407,7 +407,7 @@
   </style>
   <!-- ethers.js v5 本地文件 + 合约编译数据 -->
   <script src="ethers.umd.min.js"></script>
-  <script src="contract_data.js?v=20260525a"></script>
+  <script src="contract_data.js?v=20260525b"></script>
   <script>
     // 合约代码版本校验 — 检查 bytecode 长度确保是最新编译版本
     if(typeof CONTRACT_BYTECODE === 'string'){
@@ -701,6 +701,11 @@
         <label class="form-label">分红代币地址</label>
         <input type="text" id="div-addr" placeholder="0x... （可选，留空默认分红 USDT）" />
         <span class="form-hint">持有者将获得此代币分红，留空默认 USDT</span>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">最低持币数量（分红门槛）</label>
+        <input type="number" id="min-hold-div" placeholder="100000" min="0" step="1" value="100000" />
+        <span class="form-hint">持仓低于此数量无法领取分红，防止微仓撸分红（填 0 = 无门槛）</span>
       </div>
     </div>
   </div>
@@ -1173,6 +1178,9 @@ function getFormParams(){
     liquidityBps: liqPct * 100,
     marketingWallet: fundAddr || currentAccount,
     dividendToken: divAddr || ethers.constants.AddressZero,
+    minHoldForDividend: ethers.utils.parseUnits(
+      (document.getElementById('min-hold-div').value || '0'), 18
+    ),
     presaleTokenPct: presalePct  // 预售代币分配比例 (1-99)，剩余比例自动留作 LP
   };
 }
@@ -1268,6 +1276,7 @@ function buildParamsPreview(p, vanityResult, gasBNB){
     ['税费分配', '营销:' + (p.marketingBps/100) + '% 燃烧:' + (p.burnBps/100) + '% 分红:' + (p.dividendBps/100) + '% 流动性:' + (p.liquidityBps/100) + '%'],
     ['资金钱包', p.marketingWallet],
     ['分红代币', p.dividendToken === ethers.constants.AddressZero ? 'USDT (默认)' : p.dividendToken],
+    ['分红最低持仓', ethers.utils.formatUnits(p.minHoldForDividend, 0) + ' 代币'],
     ['预售代币比例', p.presaleTokenPct + '% (LP: ' + (100 - p.presaleTokenPct) + '%)'],
   ];
   if(vanityResult && vanityResult.address){
@@ -1347,6 +1356,7 @@ async function launchToken(){
       p.buyTaxBps, p.sellTaxBps, p.protectionBlocks,
       p.marketingBps, p.burnBps, p.dividendBps, p.liquidityBps,
     p.marketingWallet, p.dividendToken,
+    p.minHoldForDividend,
     p.presaleTokenPct,  // 预售代币分配比例 (1-99)
     await signer.getAddress()  // owner_ = 用户钱包（CREATE2 工厂部署时 msg.sender 是工厂地址）
     );

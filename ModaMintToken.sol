@@ -27,6 +27,9 @@ interface IUniswapV2Router02 {
     function swapExactTokensForETHSupportingFeeOnTransferTokens(
         uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline
     ) external;
+    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline
+    ) external;
     function addLiquidityETH(
         address token, uint amountTokenDesired, uint amountTokenMin,
         uint amountETHMin, address to, uint deadline
@@ -100,11 +103,25 @@ contract ModaMintToken is IERC20, Ownable {
     mapping(address => bool) public isExcludedFromProtection;
     mapping(address => uint256) private _lastTxBlock;
 
+    // ===== 分红系统 =====
+    uint256 public minHoldForDividend;                     // 最低持仓门槛 (18 decimals)
+    uint256 public pendingSwapForDividend;                 // 待 swap 为分红代币的代币数量
+    uint256 public dividendsPerShare;                      // 每代币累积分红 (× 1e12 精度)
+    uint256 public totalDividendDistributed;                // 历史分红总额
+    mapping(address => int256) public magnifiedDividendCorrections; // 持仓修正值
+    uint256 public lastDividendBlock;                      // 上次自动处理分红的区块
+    uint256 public dividendCooldown;                       // 自动处理分红冷却区块数
+    uint256 private _availableDivFunds;                    // 可发放的分红代币余额
+    uint256 private constant DIVIDEND_PRECISION = 1e12;
+    address private constant USDT_BSC = 0x55d398326f99059fF775485246999027B3197955;
+
     uint256 private constant MAX_TAX = 1000;
 
     event Minted(address indexed user, uint256 bnbAmount, uint256 tokenAmount);
     event PresaleCompleted(uint256 totalBNB, uint256 totalTokens);
     event TradingEnabled();
+    event DividendProcessed(uint256 tokensSwapped, uint256 dividendReceived);
+    event DividendClaimed(address indexed holder, address indexed dividendToken, uint256 amount);
 
     // 预售代币分配比例（构造函数参数）
     uint256 public presaleTokenPct;  // e.g. 50 = 50% 给预售，50% 留作 LP
@@ -124,6 +141,7 @@ contract ModaMintToken is IERC20, Ownable {
         uint256 liquidityPct_,
         address marketingWallet_,
         address dividendToken_,
+        uint256 minHoldForDividend_,
         uint256 presaleTokenPct_,  // 预售分配比例 (1-100)
         address owner_
     ) {
@@ -165,6 +183,9 @@ contract ModaMintToken is IERC20, Ownable {
         liquidityBps = liquidityPct_;
         marketingWallet = marketingWallet_;
         dividendToken = dividendToken_;
+        minHoldForDividend = minHoldForDividend_;
+        dividendCooldown = 100;        // ~5分钟自动处理一次分红
+        lastDividendBlock = block.number;
         presaleActive = true;
         tradingActive = false;
 
@@ -307,6 +328,12 @@ contract ModaMintToken is IERC20, Ownable {
         }
         _lastTxBlock[from] = block.number;
 
+        // 分红修正值更新：确保转账不影响双方未领取的分红
+        if (dividendBps > 0 && dividendsPerShare > 0) {
+            magnifiedDividendCorrections[from] += int256(amount) * int256(dividendsPerShare);
+            magnifiedDividendCorrections[to]   -= int256(amount) * int256(dividendsPerShare);
+        }
+
         bool isBuy = (from == uniswapV2Pair && to != address(uniswapV2Router));
         bool isSell = (to == uniswapV2Pair && from != address(uniswapV2Router));
         uint256 taxAmount = 0;
@@ -354,6 +381,17 @@ contract ModaMintToken is IERC20, Ownable {
                 liq, 0, path, address(this), block.timestamp
             );
         }
+        // 分红 — 记录待 swap 数量，卖出时自动处理（有冷却期）
+        if (dividendBps > 0) {
+            uint256 divAmt = taxAmt.mul(dividendBps).div(10000);
+            if (divAmt > 0) {
+                pendingSwapForDividend = pendingSwapForDividend.add(divAmt);
+                if (isSell && block.number >= lastDividendBlock.add(dividendCooldown)) {
+                    _processDividendSwap();
+                    lastDividendBlock = block.number;
+                }
+            }
+        }
     }
 
     // ===== Owner =====
@@ -386,6 +424,107 @@ contract ModaMintToken is IERC20, Ownable {
         if (!tradingActive) {
             tradingActive = true;
             emit TradingEnabled();
+        }
+    }
+
+    // ===== 分红系统 =====
+
+    /// @notice 获取当前生效的分红代币地址（留空默认 USDT）
+    function getDividendToken() public view returns (address) {
+        return dividendToken == address(0) ? USDT_BSC : dividendToken;
+    }
+
+    /// @notice 手动触发分红处理（任何人可调用），swap 积攒的代币 → 分红代币并分配
+    function processDividend() external {
+        require(pendingSwapForDividend > 0, "Nothing to process");
+        _processDividendSwap();
+    }
+
+    /// @notice 持有者领取分红
+    function claimDividend() external {
+        uint256 pending = getPendingDividend(msg.sender);
+        require(pending > 0, "Nothing to claim");
+        require(_balances[msg.sender] >= minHoldForDividend, "Below min hold");
+
+        address _divToken = getDividendToken();
+        require(pending <= _availableDivFunds, "Insufficient dividend funds");
+
+        _availableDivFunds = _availableDivFunds.sub(pending);
+        magnifiedDividendCorrections[msg.sender] = magnifiedDividendCorrections[msg.sender]
+            - int256(pending.mul(DIVIDEND_PRECISION));
+
+        IERC20(_divToken).transfer(msg.sender, pending);
+        emit DividendClaimed(msg.sender, _divToken, pending);
+    }
+
+    /// @notice 查询地址的可领取分红数量
+    function getPendingDividend(address account) public view returns (uint256) {
+        if (_balances[account] == 0 || dividendBps == 0) return 0;
+        if (_balances[account] < minHoldForDividend) return 0;
+        int256 mag = int256(_balances[account]) * int256(dividendsPerShare)
+                     + magnifiedDividendCorrections[account];
+        if (mag <= 0) return 0;
+        return uint256(mag) / DIVIDEND_PRECISION;
+    }
+
+    /// @notice 管理员：设置最低持仓门槛
+    function setMinHoldForDividend(uint256 amount) external onlyOwner {
+        minHoldForDividend = amount;
+    }
+
+    /// @notice 管理员：设置自动分红处理冷却期（区块数）
+    function setDividendCooldown(uint256 blocks) external onlyOwner {
+        dividendCooldown = blocks;
+    }
+
+    /// @dev 内部：swap 积攒的代币 → 分红代币并更新 dividendsPerShare
+    function _processDividendSwap() internal {
+        uint256 amount = pendingSwapForDividend;
+        if (amount == 0) return;
+        pendingSwapForDividend = 0;
+
+        address _divToken = getDividendToken();
+        address weth = uniswapV2Router.WETH();
+
+        uint256 balBefore = IERC20(_divToken).balanceOf(address(this));
+
+        // swap 本代币 → WBNB → dividendToken（如果 dividendToken 就是 WBNB 则只走一跳）
+        _approve(address(this), address(uniswapV2Router), amount);
+        if (_divToken == weth) {
+            address[] memory path = new address[](2);
+            path[0] = address(this);
+            path[1] = weth;
+            try uniswapV2Router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+                amount, 0, path, address(this), block.timestamp
+            ) {} catch {
+                pendingSwapForDividend = pendingSwapForDividend.add(amount);
+                return;
+            }
+        } else {
+            address[] memory path = new address[](3);
+            path[0] = address(this);
+            path[1] = weth;
+            path[2] = _divToken;
+            try uniswapV2Router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+                amount, 0, path, address(this), block.timestamp
+            ) {} catch {
+                pendingSwapForDividend = pendingSwapForDividend.add(amount);
+                return;
+            }
+        }
+
+        uint256 received = IERC20(_divToken).balanceOf(address(this)).sub(balBefore);
+        if (received > 0) {
+            // 按总供应量均分，更新 dividendsPerShare
+            uint256 _totalSupply = _totalSupply;
+            if (_totalSupply > 0) {
+                dividendsPerShare = dividendsPerShare.add(
+                    received.mul(DIVIDEND_PRECISION).div(_totalSupply)
+                );
+                totalDividendDistributed = totalDividendDistributed.add(received);
+                _availableDivFunds = _availableDivFunds.add(received);
+            }
+            emit DividendProcessed(amount, received);
         }
     }
 
